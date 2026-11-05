@@ -3,108 +3,548 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Muse.ai Virtual Office</title>
+  <title>HQ — Muse.ai Autonomous Office</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-    * { box-sizing: border-box; }
+    :root {
+      --bg: #0b0d13;
+      --panel: #131722;
+      --panel-border: #1e2436;
+      --panel-hover: #181d2b;
+      --text: #e2e8f0;
+      --text-muted: #64748b;
+      --primary: #3b82f6;
+      --primary-glow: rgba(59, 130, 246, 0.25);
+      --pm-color: #6366f1;
+      --dev-color: #10b981;
+      --qa-color: #f59e0b;
+      --font-sans: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      margin: 0;
-      background: #111318;
-      color: #e5e7eb;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      padding: 20px;
+      overflow-x: hidden;
     }
-    h1 {
-      margin: 0 0 16px 0;
-      font-size: 18px;
-      letter-spacing: 0.05em;
-      color: #60a5fa;
-      text-transform: uppercase;
+
+    /* Ambient background grid */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.12) 0%, transparent 50%),
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 100% 100%, 32px 32px, 32px 32px;
+      pointer-events: none;
+      z-index: 0;
     }
-    #canvas-card {
-      background: #1f2430;
-      border: 1px solid #374151;
-      border-radius: 8px;
-      padding: 12px;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-    }
-    canvas {
-      background: #171b24;
-      border-radius: 6px;
-      display: block;
-    }
-    #control-box {
-      width: 720px;
-      margin-top: 14px;
+
+    /* Top Navigation */
+    header {
+      position: relative;
+      z-index: 10;
+      height: 64px;
+      border-bottom: 1px solid var(--panel-border);
+      background: rgba(11, 13, 19, 0.85);
+      backdrop-filter: blur(12px);
       display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo-badge {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #6366f1, #3b82f6);
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      box-shadow: 0 0 16px var(--primary-glow);
+    }
+    .logo-badge svg { width: 18px; height: 18px; fill: #fff; }
+    .brand-text h1 {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: #fff;
+    }
+    .brand-text p {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .live-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-family: var(--font-mono);
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      padding: 4px 10px;
+      border-radius: 999px;
+      color: #34d399;
+    }
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      background: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    /* Main Workspace Layout */
+    main {
+      position: relative;
+      z-index: 5;
+      flex: 1;
+      max-width: 1380px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 24px 28px;
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      gap: 24px;
+    }
+
+    /* Left: 2D Office Viewport & Agent HUD */
+    .office-section {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .viewport-card {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
+      position: relative;
+    }
+
+    .viewport-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--panel-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(19, 23, 34, 0.6);
+    }
+    .viewport-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .viewport-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    canvas {
+      width: 100%;
+      height: 380px;
+      display: block;
+      background: #0f131c;
+      cursor: crosshair;
+    }
+
+    /* Agent Cards Row */
+    .agent-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .agent-card {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .agent-card:hover {
+      border-color: #2e3852;
+      background: var(--panel-hover);
+      transform: translateY(-2px);
+    }
+    .agent-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--card-accent, #3b82f6);
+    }
+
+    .agent-card-header {
+      display: flex;
+      align-items: center;
       gap: 10px;
     }
-    input {
-      flex: 1;
-      background: #1f2430;
-      border: 1px solid #374151;
+    .agent-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 14px;
       color: #fff;
-      padding: 10px 14px;
-      border-radius: 6px;
-      font-family: inherit;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .agent-info h3 {
       font-size: 13px;
-      outline: none;
-    }
-    input:focus { border-color: #60a5fa; }
-    button {
-      background: #2563eb;
+      font-weight: 700;
       color: #fff;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 6px;
-      font-family: inherit;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.15s;
     }
-    button:hover { background: #1d4ed8; }
-    #console {
-      width: 720px;
-      height: 220px;
-      background: #0d0f14;
-      border: 1px solid #374151;
+    .agent-info span {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .agent-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
       border-radius: 6px;
-      margin-top: 14px;
-      padding: 12px;
-      overflow-y: auto;
-      font-size: 12px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      font-weight: 500;
+      width: fit-content;
+    }
+    .pill-idle { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }
+    .pill-thinking { background: rgba(245, 158, 11, 0.15); color: #fbbf24; animation: flash 1s infinite alternate; }
+    .pill-talking { background: rgba(99, 102, 241, 0.15); color: #818cf8; }
+
+    @keyframes flash {
+      from { opacity: 0.7; }
+      to { opacity: 1; }
+    }
+
+    .agent-desc {
+      font-size: 11px;
+      color: #94a3b8;
+      line-height: 1.4;
+      flex: 1;
+    }
+
+    /* Right Column: Mission Control & Feed */
+    .control-section {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    /* Dispatch Panel */
+    .dispatch-card {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
+    }
+    .dispatch-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .dispatch-header h2 {
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #fff;
+    }
+
+    .input-wrapper {
+      position: relative;
+    }
+    textarea {
+      width: 100%;
+      height: 90px;
+      background: #0b0d13;
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      color: #fff;
+      font-family: var(--font-sans);
+      font-size: 13px;
       line-height: 1.5;
+      resize: none;
+      outline: none;
+      transition: all 0.2s;
     }
-    .log-row { margin-bottom: 6px; word-break: break-word; }
-    .time { color: #6b7280; }
-    .sender { color: #34d399; font-weight: bold; }
-    .arrow { color: #9ca3af; }
-    .target { color: #60a5fa; font-weight: bold; }
-    .content { color: #f3f4f6; }
+    textarea:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+    }
+
+    .dispatch-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .quick-tags {
+      display: flex;
+      gap: 6px;
+    }
+    .quick-tag {
+      background: #181d2b;
+      border: 1px solid #283147;
+      color: #94a3b8;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .quick-tag:hover {
+      color: #fff;
+      border-color: #4f46e5;
+    }
+
+    .btn-dispatch {
+      background: linear-gradient(135deg, #4f46e5, #3b82f6);
+      border: none;
+      color: #fff;
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 10px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+      transition: all 0.2s;
+    }
+    .btn-dispatch:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+    .btn-dispatch:active {
+      transform: translateY(0);
+    }
+
+    /* Live Office Feed / Terminal */
+    .feed-card {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
+      min-height: 380px;
+    }
+    .feed-header {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--panel-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(19, 23, 34, 0.6);
+    }
+    .feed-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .feed-body {
+      flex: 1;
+      background: #090b10;
+      padding: 14px;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .feed-item {
+      background: rgba(255, 255, 255, 0.02);
+      border-left: 3px solid #334155;
+      padding: 8px 12px;
+      border-radius: 0 8px 8px 0;
+      animation: fadeIn 0.2s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateX(-4px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    .feed-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10.5px;
+      margin-bottom: 4px;
+    }
+    .feed-time { color: var(--text-muted); }
+    .feed-from { font-weight: 600; }
+    .feed-arrow { color: #475569; }
+    .feed-to { font-weight: 600; }
+    .feed-content {
+      color: #cbd5e1;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #262f45; border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #334155; }
   </style>
 </head>
 <body>
-  <h1>Virtual Office — Multi-Account Muse.ai</h1>
 
-  <div id="canvas-card">
-    <canvas id="officeCanvas" width="720" height="300"></canvas>
-  </div>
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <div class="logo-badge">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      </div>
+      <div class="brand-text">
+        <h1>MUSE.AI AUTONOMOUS HQ</h1>
+        <p>3-Tier Synchronized Agent Cluster</p>
+      </div>
+    </div>
+    <div class="header-status">
+      <div class="live-indicator">
+        <div class="pulse-dot"></div>
+        <span>CLUSTER ACTIVE</span>
+      </div>
+    </div>
+  </header>
 
-  <div id="control-box">
-    <input type="text" id="taskInput" placeholder="Send operational task to Alice (PM)..." onkeydown="if(event.key==='Enter') sendTask()">
-    <button onclick="sendTask()">DISPATCH</button>
-  </div>
+  <!-- Main View -->
+  <main>
+    <!-- Left Section: 2D Canvas & Status Cards -->
+    <section class="office-section">
+      <div class="viewport-card">
+        <div class="viewport-header">
+          <div class="viewport-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M3 9h18"/></svg>
+            <span>Live Office Floor View (2D Isometric Simulation)</span>
+          </div>
+          <div class="viewport-meta" id="fpsMeta">60 FPS • Realtime Sync</div>
+        </div>
+        <canvas id="officeCanvas" width="900" height="420"></canvas>
+      </div>
 
-  <div id="console"></div>
+      <!-- Agent Cards -->
+      <div class="agent-cards" id="agentCardsContainer">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+
+    <!-- Right Section: Dispatch & Terminal -->
+    <section class="control-section">
+      <!-- Dispatch Box -->
+      <div class="dispatch-card">
+        <div class="dispatch-header">
+          <h2>Mission Dispatch</h2>
+          <span style="font-size: 11px; color: var(--text-muted);">Shift + Enter to send</span>
+        </div>
+        <div class="input-wrapper">
+          <textarea id="taskInput" placeholder="Give an objective to PM (e.g. Design authentication middleware with rate-limiting)..."></textarea>
+        </div>
+        <div class="dispatch-actions">
+          <div class="quick-tags">
+            <span class="quick-tag" onclick="injectQuick('Build API Gateway')">API Gateway</span>
+            <span class="quick-tag" onclick="injectQuick('Audit Smart Contract')">Security Audit</span>
+            <span class="quick-tag" onclick="injectQuick('Refactor Auth Route')">Auth Refactor</span>
+          </div>
+          <button class="btn-dispatch" onclick="sendTask()">
+            <span>DISPATCH</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Feed / Logs -->
+      <div class="feed-card">
+        <div class="feed-header">
+          <div class="feed-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            <span>Inter-Agent Protocol Bus</span>
+          </div>
+          <span id="logCounter" style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">0 events</span>
+        </div>
+        <div class="feed-body" id="feedBody">
+          <!-- Real-time logs appear here -->
+        </div>
+      </div>
+    </section>
+  </main>
 
   <script>
     const canvas = document.getElementById('officeCanvas');
     const ctx = canvas.getContext('2d');
-    const consoleDiv = document.getElementById('console');
-    let state = { agents: [] };
+    const feedBody = document.getElementById('feedBody');
+    const logCounter = document.getElementById('logCounter');
+    const agentCardsContainer = document.getElementById('agentCardsContainer');
+    const taskInput = document.getElementById('taskInput');
 
+    let state = {
+      agents: [
+        { id: "agent_pm", name: "Alice", role: "Project Manager", status: "idle", desk: { x: 160, y: 220 }, color: "#6366f1", bubble: "" },
+        { id: "agent_dev", name: "Bob", role: "Fullstack Dev", status: "idle", desk: { x: 450, y: 220 }, color: "#10b981", bubble: "" },
+        { id: "agent_qa", name: "Charlie", role: "Security / QA", status: "idle", desk: { x: 740, y: 220 }, color: "#f59e0b", bubble: "" }
+      ]
+    };
+    let eventCount = 0;
+
+    // WebSocket link
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${proto}//${location.host}`);
 
@@ -112,101 +552,231 @@
       const data = JSON.parse(event.data);
       if (data.type === 'INIT') {
         state = data.payload;
-        (state.logs || []).forEach(appendLog);
+        renderCards();
+        (state.logs || []).forEach(appendFeed);
       } else if (data.type === 'AGENT_UPDATE') {
         const i = state.agents.findIndex(a => a.id === data.payload.id);
-        if (i !== -1) state.agents[i] = data.payload;
+        if (i !== -1) {
+          state.agents[i] = data.payload;
+          renderCards();
+        }
       } else if (data.type === 'NEW_LOG') {
-        appendLog(data.payload);
+        appendFeed(data.payload);
       }
     };
 
-    function appendLog(log) {
-      const row = document.createElement('div');
-      row.className = 'log-row';
-      row.innerHTML = `<span class="time">[${log.timestamp}]</span> <span class="sender">${log.from}</span> <span class="arrow">➔</span> <span class="target">${log.to}</span>: <span class="content">${escapeHtml(log.text)}</span>`;
-      consoleDiv.appendChild(row);
-      consoleDiv.scrollTop = consoleDiv.scrollHeight;
+    function renderCards() {
+      agentCardsContainer.innerHTML = state.agents.map(ag => {
+        const pillClass = ag.status === 'thinking' ? 'pill-thinking' : (ag.status === 'talking' ? 'pill-talking' : 'pill-idle');
+        const statusLabel = ag.status.toUpperCase();
+        return `
+          <div class="agent-card" style="--card-accent: ${ag.color}">
+            <div class="agent-card-header">
+              <div class="agent-avatar" style="background: ${ag.color}">
+                ${ag.name[0]}
+              </div>
+              <div class="agent-info">
+                <h3>${ag.name}</h3>
+                <span>${ag.id.replace('agent_', '').toUpperCase()} TIER</span>
+              </div>
+            </div>
+            <div class="agent-pill ${pillClass}">
+              <span>●</span>
+              <span>${statusLabel}</span>
+            </div>
+            <div class="agent-desc">
+              ${ag.bubble ? `<strong style="color:#fff">"${escapeHtml(ag.bubble)}"</strong>` : `Awaiting task dispatch...`}
+            </div>
+          </div>
+        `;
+      }).join('');
     }
 
-    function escapeHtml(text) {
-      return text.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    function appendFeed(log) {
+      eventCount++;
+      logCounter.innerText = `${eventCount} events`;
+      const div = document.createElement('div');
+      div.className = 'feed-item';
+      
+      let borderCol = '#3b82f6';
+      if (log.from.includes('Alice')) borderCol = '#6366f1';
+      if (log.from.includes('Bob')) borderCol = '#10b981';
+      if (log.from.includes('Charlie')) borderCol = '#f59e0b';
+      div.style.borderLeftColor = borderCol;
+
+      div.innerHTML = `
+        <div class="feed-meta">
+          <span class="feed-time">${log.timestamp}</span>
+          <span class="feed-from" style="color: ${borderCol}">${log.from}</span>
+          <span class="feed-arrow">➔</span>
+          <span class="feed-to" style="color: #94a3b8">${log.to}</span>
+        </div>
+        <div class="feed-content">${escapeHtml(log.text)}</div>
+      `;
+      feedBody.appendChild(div);
+      feedBody.scrollTop = feedBody.scrollHeight;
     }
 
-    function render() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    function escapeHtml(t) {
+      return (t || '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
 
-      // Floor tiles
-      ctx.strokeStyle = '#222836';
-      ctx.lineWidth = 1;
-      for (let x = 0; x < canvas.width; x += 30) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+    function injectQuick(text) {
+      taskInput.value = text;
+      taskInput.focus();
+    }
+
+    taskInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendTask();
       }
-      for (let y = 0; y < canvas.height; y += 30) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
-      }
-
-      // Office elements & agents
-      (state.agents || []).forEach(ag => {
-        // Desk
-        ctx.fillStyle = '#2d3748';
-        ctx.fillRect(ag.desk.x - 35, ag.desk.y + 10, 70, 36);
-
-        // Monitor
-        ctx.fillStyle = ag.status === 'thinking' ? '#10b981' : (ag.status === 'talking' ? '#f59e0b' : '#374151');
-        ctx.fillRect(ag.desk.x - 14, ag.desk.y + 14, 28, 16);
-
-        // Chair
-        ctx.fillStyle = '#1e293b';
-        ctx.fillRect(ag.desk.x - 12, ag.desk.y - 12, 24, 18);
-
-        // Agent avatar block
-        ctx.fillStyle = ag.color;
-        ctx.fillRect(ag.desk.x - 14, ag.desk.y - 20, 28, 28);
-
-        // Status badge
-        if (ag.status !== 'idle') {
-          ctx.strokeStyle = ag.status === 'thinking' ? '#34d399' : '#fbbf24';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(ag.desk.x - 17, ag.desk.y - 23, 34, 34);
-        }
-
-        // Agent Name
-        ctx.fillStyle = '#e2e8f0';
-        ctx.font = '12px ui-monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(ag.name.split(' ')[0], ag.desk.x, ag.desk.y - 30);
-
-        // Speech / thought bubble
-        if (ag.bubble) {
-          ctx.fillStyle = '#0f172a';
-          ctx.fillRect(ag.desk.x - 65, ag.desk.y - 68, 130, 24);
-          ctx.strokeStyle = '#94a3b8';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(ag.desk.x - 65, ag.desk.y - 68, 130, 24);
-
-          ctx.fillStyle = '#fef08a';
-          ctx.font = '10px ui-monospace';
-          const trimmed = ag.bubble.length > 20 ? ag.bubble.substring(0, 18) + '..' : ag.bubble;
-          ctx.fillText(trimmed, ag.desk.x, ag.desk.y - 52);
-        }
-      });
-
-      requestAnimationFrame(render);
-    }
-    requestAnimationFrame(render);
+    });
 
     async function sendTask() {
-      const el = document.getElementById('taskInput');
-      const val = el.value.trim();
+      const val = taskInput.value.trim();
       if (!val) return;
-      el.value = '';
+      taskInput.value = '';
       await fetch('/api/task', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ task: val })
       });
     }
+
+    // Modern 2D Canvas Renderer
+    let tick = 0;
+    function draw() {
+      tick += 0.03;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Floor tiles with modern perspective
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < canvas.width; x += 40) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+      }
+      for (let y = 0; y < canvas.height; y += 40) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+      }
+
+      // Office zones
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.015)';
+      ctx.roundRect(40, 60, canvas.width - 80, canvas.height - 120, 16);
+      ctx.fill();
+
+      // Render Agents & Workstations
+      (state.agents || []).forEach((ag, idx) => {
+        const x = ag.desk.x;
+        const y = ag.desk.y;
+
+        // Desk Shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        ctx.beginPath();
+        ctx.ellipse(x, y + 42, 60, 18, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Modern Glassmorphism Desk
+        ctx.fillStyle = '#1a2233';
+        ctx.strokeStyle = '#2d3b55';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(x - 55, y + 5, 110, 50, 10);
+        ctx.fill();
+        ctx.stroke();
+
+        // Dual Monitor Setup
+        const isBusy = ag.status !== 'idle';
+        const screenGlow = ag.status === 'thinking' ? '#f59e0b' : (ag.status === 'talking' ? ag.color : '#3b82f6');
+        
+        // Monitor Left
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(x - 42, y + 12, 38, 22);
+        ctx.strokeStyle = isBusy ? screenGlow : '#334155';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x - 42, y + 12, 38, 22);
+
+        // Monitor Right
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(x + 4, y + 12, 38, 22);
+        ctx.strokeStyle = isBusy ? screenGlow : '#334155';
+        ctx.strokeRect(x + 4, y + 12, 38, 22);
+
+        // Screen code lines effect
+        if (isBusy) {
+          ctx.fillStyle = screenGlow;
+          ctx.fillRect(x - 38, y + 16, 20, 2);
+          ctx.fillRect(x - 38, y + 21, 28, 2);
+          ctx.fillRect(x + 8, y + 16, 26, 2);
+          ctx.fillRect(x + 8, y + 21, 16, 2);
+        }
+
+        // Ergonomic Chair
+        ctx.fillStyle = '#111827';
+        ctx.beginPath();
+        ctx.ellipse(x, y - 10, 22, 16, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Animated Avatar Floating / Breathing
+        const floatY = y - 32 + (Math.sin(tick + idx) * 3);
+
+        // Aura pulse if thinking/talking
+        if (isBusy) {
+          ctx.fillStyle = `${ag.color}22`;
+          ctx.beginPath();
+          ctx.arc(x, floatY, 32 + Math.sin(tick * 3) * 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Agent Head & Body
+        ctx.fillStyle = ag.color;
+        ctx.beginPath();
+        ctx.arc(x, floatY, 18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Visor / Eyes
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.roundRect(x - 10, floatY - 4, 20, 8, 4);
+        ctx.fill();
+        ctx.fillStyle = isBusy ? '#38bdf8' : '#64748b';
+        ctx.fillRect(x - 6, floatY - 2, 12, 4);
+
+        // Name Tag
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '600 12px Plus Jakarta Sans';
+        ctx.textAlign = 'center';
+        ctx.fillText(ag.name, x, floatY - 26);
+
+        // Floating Thought / Speech Bubble
+        if (ag.bubble) {
+          const bubbleText = ag.bubble.length > 28 ? ag.bubble.substring(0, 26) + '...' : ag.bubble;
+          ctx.font = '500 11px JetBrains Mono';
+          const textWidth = ctx.measureText(bubbleText).width;
+          const bubbleW = Math.max(textWidth + 24, 80);
+          const bubbleH = 28;
+          const bx = x - (bubbleW / 2);
+          const by = floatY - 68;
+
+          ctx.fillStyle = '#1e293b';
+          ctx.strokeStyle = ag.color;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.roundRect(bx, by, bubbleW, bubbleH, 8);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#f8fafc';
+          ctx.fillText(bubbleText, x, by + 18);
+        }
+      });
+
+      requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
   </script>
 </body>
 </html>
