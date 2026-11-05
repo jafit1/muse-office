@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Muse.ai Virtual Office</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #111318;
+      color: #e5e7eb;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    h1 {
+      margin: 0 0 16px 0;
+      font-size: 18px;
+      letter-spacing: 0.05em;
+      color: #60a5fa;
+      text-transform: uppercase;
+    }
+    #canvas-card {
+      background: #1f2430;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 12px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+    canvas {
+      background: #171b24;
+      border-radius: 6px;
+      display: block;
+    }
+    #control-box {
+      width: 720px;
+      margin-top: 14px;
+      display: flex;
+      gap: 10px;
+    }
+    input {
+      flex: 1;
+      background: #1f2430;
+      border: 1px solid #374151;
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 13px;
+      outline: none;
+    }
+    input:focus { border-color: #60a5fa; }
+    button {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-family: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: #1d4ed8; }
+    #console {
+      width: 720px;
+      height: 220px;
+      background: #0d0f14;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      margin-top: 14px;
+      padding: 12px;
+      overflow-y: auto;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .log-row { margin-bottom: 6px; word-break: break-word; }
+    .time { color: #6b7280; }
+    .sender { color: #34d399; font-weight: bold; }
+    .arrow { color: #9ca3af; }
+    .target { color: #60a5fa; font-weight: bold; }
+    .content { color: #f3f4f6; }
+  </style>
+</head>
+<body>
+  <h1>Virtual Office — Multi-Account Muse.ai</h1>
+
+  <div id="canvas-card">
+    <canvas id="officeCanvas" width="720" height="300"></canvas>
+  </div>
+
+  <div id="control-box">
+    <input type="text" id="taskInput" placeholder="Send operational task to Alice (PM)..." onkeydown="if(event.key==='Enter') sendTask()">
+    <button onclick="sendTask()">DISPATCH</button>
+  </div>
+
+  <div id="console"></div>
+
+  <script>
+    const canvas = document.getElementById('officeCanvas');
+    const ctx = canvas.getContext('2d');
+    const consoleDiv = document.getElementById('console');
+    let state = { agents: [] };
+
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${location.host}`);
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'INIT') {
+        state = data.payload;
+        (state.logs || []).forEach(appendLog);
+      } else if (data.type === 'AGENT_UPDATE') {
+        const i = state.agents.findIndex(a => a.id === data.payload.id);
+        if (i !== -1) state.agents[i] = data.payload;
+      } else if (data.type === 'NEW_LOG') {
+        appendLog(data.payload);
+      }
+    };
+
+    function appendLog(log) {
+      const row = document.createElement('div');
+      row.className = 'log-row';
+      row.innerHTML = `<span class="time">[${log.timestamp}]</span> <span class="sender">${log.from}</span> <span class="arrow">➔</span> <span class="target">${log.to}</span>: <span class="content">${escapeHtml(log.text)}</span>`;
+      consoleDiv.appendChild(row);
+      consoleDiv.scrollTop = consoleDiv.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      return text.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Floor tiles
+      ctx.strokeStyle = '#222836';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < canvas.width; x += 30) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+      }
+      for (let y = 0; y < canvas.height; y += 30) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+      }
+
+      // Office elements & agents
+      (state.agents || []).forEach(ag => {
+        // Desk
+        ctx.fillStyle = '#2d3748';
+        ctx.fillRect(ag.desk.x - 35, ag.desk.y + 10, 70, 36);
+
+        // Monitor
+        ctx.fillStyle = ag.status === 'thinking' ? '#10b981' : (ag.status === 'talking' ? '#f59e0b' : '#374151');
+        ctx.fillRect(ag.desk.x - 14, ag.desk.y + 14, 28, 16);
+
+        // Chair
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(ag.desk.x - 12, ag.desk.y - 12, 24, 18);
+
+        // Agent avatar block
+        ctx.fillStyle = ag.color;
+        ctx.fillRect(ag.desk.x - 14, ag.desk.y - 20, 28, 28);
+
+        // Status badge
+        if (ag.status !== 'idle') {
+          ctx.strokeStyle = ag.status === 'thinking' ? '#34d399' : '#fbbf24';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(ag.desk.x - 17, ag.desk.y - 23, 34, 34);
+        }
+
+        // Agent Name
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = '12px ui-monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(ag.name.split(' ')[0], ag.desk.x, ag.desk.y - 30);
+
+        // Speech / thought bubble
+        if (ag.bubble) {
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(ag.desk.x - 65, ag.desk.y - 68, 130, 24);
+          ctx.strokeStyle = '#94a3b8';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(ag.desk.x - 65, ag.desk.y - 68, 130, 24);
+
+          ctx.fillStyle = '#fef08a';
+          ctx.font = '10px ui-monospace';
+          const trimmed = ag.bubble.length > 20 ? ag.bubble.substring(0, 18) + '..' : ag.bubble;
+          ctx.fillText(trimmed, ag.desk.x, ag.desk.y - 52);
+        }
+      });
+
+      requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
+
+    async function sendTask() {
+      const el = document.getElementById('taskInput');
+      const val = el.value.trim();
+      if (!val) return;
+      el.value = '';
+      await fetch('/api/task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: val })
+      });
+    }
+  </script>
+</body>
+</html>
