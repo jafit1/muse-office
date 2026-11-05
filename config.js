@@ -1,4 +1,4 @@
-const defaultKey = process.env.MUSE_API_KEY || "";
+const defaultKey = process.env.MUSE_API_KEY || "mgst_jfWtPT3iw7fw1RA711k7mAjc9-9UwDXf7SQo-VgGcQw";
 
 module.exports = {
   port: process.env.PORT || 61342,
