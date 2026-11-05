@@ -1,7 +1,7 @@
 const defaultKey = process.env.MUSE_API_KEY || "";
 
 module.exports = {
-  port: process.env.PORT || 3000,
+  port: process.env.PORT || 61342,
   museBaseUrl: process.env.MUSE_BASE_URL || 'https://api.muse.ai/v1',
   agents: [
     {
