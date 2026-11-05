@@ -134,7 +134,10 @@ wss.on('connection', ws => {
   ws.send(JSON.stringify({ type: 'INIT', payload: officeState }));
 });
 
-const PORT = process.env.PORT || config.port || 3000;
+// Botkeep injects random assigned port via PORT, SERVER_PORT, or APP_PORT
+const PORT = process.env.PORT || process.env.SERVER_PORT || process.env.APP_PORT || config.port || 3000;
+
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[Virtual Office] Listening on 0.0.0.0:${PORT}`);
+  console.log(`[Virtual Office] Successfully listening on 0.0.0.0:${PORT}`);
+  console.log(`[Debug Env] PORT: ${process.env.PORT}, SERVER_PORT: ${process.env.SERVER_PORT}, APP_PORT: ${process.env.APP_PORT}`);
 });
