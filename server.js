@@ -10,6 +10,11 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 app.set('trust proxy', true);
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
 app.use(express.json({ limit: '256kb' }));
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: '1h',

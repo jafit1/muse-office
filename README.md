@@ -37,6 +37,7 @@ Langkah di Google Cloud Console:
 1. APIs & Services → Credentials → **Create credentials → OAuth client ID → Web application**.
 2. Authorized redirect URI: `https://DOMAIN-TETAP/api/auth/antigravity/callback`. Harus sama persis dengan `ANTIGRAVITY_CALLBACK_URL`, termasuk skema dan tanpa slash di akhir.
 3. Salin Client ID dan Client Secret ke env Botkeep. Jangan commit ke repo — GitHub Push Protection menolak nilai ini.
+4. OAuth consent screen: kalau status app masih **Testing**, tambahkan akun Google yang akan dipakai sebagai *test user*, atau login akan ditolak dengan `access_denied`.
 
 `DATA_DIR` harus volume persisten; kalau tidak, login hilang setiap redeploy dan harus authorize ulang. Set `ANTIGRAVITY_CALLBACK_URL` eksplisit supaya callback tidak pernah dibangun dari host internal proxy.
 

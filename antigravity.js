@@ -74,8 +74,8 @@ function projectOf(assist) {
   return (typeof raw === 'object' ? raw?.id : raw) || assist?.project || '';
 }
 
-async function loadProject(headers, tier) {
-  const assist = await jsonFetch(CODE_ASSIST_URL, { method: 'POST', headers, body: JSON.stringify({ metadata: METADATA }) });
+async function loadProject(headers, tier, firstAssist) {
+  const assist = firstAssist || await jsonFetch(CODE_ASSIST_URL, { method: 'POST', headers, body: JSON.stringify({ metadata: METADATA }) });
   let projectId = projectOf(assist);
   if (projectId) return { projectId, assist };
   // No project yet: provision one, then poll until Cloud Code reports it.
@@ -95,7 +95,7 @@ async function connectCode(code, req) {
   const info = await jsonFetch(`${USERINFO_URL}?alt=json`, { headers });
   const assist = await jsonFetch(CODE_ASSIST_URL, { method: 'POST', headers, body: JSON.stringify({ metadata: METADATA }) }).catch(() => ({}));
   const tier = assist.allowedTiers?.find(t => t.isDefault)?.id || 'legacy-tier';
-  const { projectId } = await loadProject(headers, tier);
+  const { projectId } = await loadProject(headers, tier, assist);
   if (!projectId) throw new Error('Antigravity tidak memberikan project ID untuk akun ini.');
   const saved = {
     accessToken: tokens.access_token,
