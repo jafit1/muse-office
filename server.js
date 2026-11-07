@@ -11,12 +11,21 @@ const wss = new WebSocket.Server({ server });
 
 app.set('trust proxy', true);
 app.use(express.json({ limit: '256kb' }));
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '1h',
+  // The page shell is deployed together with the script that drives it, so it
+  // must never be served from a stale cache after a redeploy.
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+  }
+}));
 
 let officeState = {
   agents: config.agents.map(a => ({
     id: a.id,
     name: a.name,
+    label: a.label,
+    role: a.role,
     status: 'idle',
     desk: a.desk,
     color: a.color,
@@ -57,39 +66,38 @@ async function runOfficeTask(taskPrompt) {
   const dev = config.agents.find(a => a.id === 'agent_dev');
   const qa = config.agents.find(a => a.id === 'agent_qa');
 
-  // Step 1: PM analyzes and assigns
   try {
-  updateAgentStatus(pm.id, 'thinking', 'Analyzing task...');
-  logOffice('OPERATOR', pm.name, taskPrompt);
+    // Step 1: PM analyzes and assigns
+    updateAgentStatus(pm.id, 'thinking', 'Analyzing task...');
+    logOffice('OPERATOR', pm.name, taskPrompt);
 
-  const pmInstructions = await callAntigravity(
-    pm,
-    `You are ${pm.name}. Role: ${pm.role}. Convert the user objective into concrete specifications and delegate to Developer (${dev.name}). Concise, actionable, zero filler.`,
-    taskPrompt
-  );
-  updateAgentStatus(pm.id, 'talking', 'Delegating to Dev...');
-  logOffice(pm.name, dev.name, pmInstructions);
+    const pmInstructions = await callAntigravity(
+      pm,
+      `You are ${pm.name}. Role: ${pm.role}. Convert the user objective into concrete specifications and delegate to Developer (${dev.name}). Concise, actionable, zero filler.`,
+      taskPrompt
+    );
+    updateAgentStatus(pm.id, 'talking', 'Delegating to Dev...');
+    logOffice(pm.name, dev.name, pmInstructions);
 
-  // Step 2: Dev executes
-  updateAgentStatus(dev.id, 'thinking', 'Implementing solution...');
-  const devResult = await callAntigravity(
-    dev,
-    `You are ${dev.name}. Role: ${dev.role}. Implement technical solution for: "${pmInstructions}". Provide complete solution, no placeholders.`,
-    pmInstructions
-  );
-  updateAgentStatus(dev.id, 'talking', 'Handing off to QA...');
-  logOffice(dev.name, qa.name, devResult);
+    // Step 2: Dev executes
+    updateAgentStatus(dev.id, 'thinking', 'Implementing solution...');
+    const devResult = await callAntigravity(
+      dev,
+      `You are ${dev.name}. Role: ${dev.role}. Implement technical solution for: "${pmInstructions}". Provide complete solution, no placeholders.`,
+      pmInstructions
+    );
+    updateAgentStatus(dev.id, 'talking', 'Handing off to QA...');
+    logOffice(dev.name, qa.name, devResult);
 
-  // Step 3: QA audits
-  updateAgentStatus(qa.id, 'thinking', 'Auditing deliverable...');
-  const qaAudit = await callAntigravity(
-    qa,
-    `You are ${qa.name}. Role: ${qa.role}. Review work from ${dev.name} against goal: "${taskPrompt}". Output final verdict, verification points, and approval.`,
-    devResult
-  );
-  updateAgentStatus(qa.id, 'talking', 'Deliverable verified!');
-  logOffice(qa.name, 'OPERATOR', qaAudit);
-
+    // Step 3: QA audits
+    updateAgentStatus(qa.id, 'thinking', 'Auditing deliverable...');
+    const qaAudit = await callAntigravity(
+      qa,
+      `You are ${qa.name}. Role: ${qa.role}. Review work from ${dev.name} against goal: "${taskPrompt}". Output final verdict, verification points, and approval.`,
+      devResult
+    );
+    updateAgentStatus(qa.id, 'talking', 'Deliverable verified!');
+    logOffice(qa.name, 'OPERATOR', qaAudit);
   } finally {
     updateAgentStatus(pm.id, 'idle', '');
     updateAgentStatus(dev.id, 'idle', '');
@@ -132,13 +140,34 @@ app.post('/api/task', async (req, res) => {
 app.get('/api/state', (req, res) => res.json(officeState));
 
 wss.on('connection', ws => {
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
   ws.send(JSON.stringify({ type: 'INIT', payload: officeState }));
 });
 
-// Botkeep assigned port for node18: 61342
-const PORT = process.env.PORT || process.env.SERVER_PORT || process.env.APP_PORT || 61342;
+// Proxies silently drop sockets that stay quiet, so the server pings and reaps
+// the ones that stopped answering.
+const heartbeat = setInterval(() => {
+  wss.clients.forEach(client => {
+    if (client.isAlive === false) return client.terminate();
+    client.isAlive = false;
+    client.ping();
+  });
+}, 25000);
+wss.on('close', () => clearInterval(heartbeat));
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[Virtual Office] Successfully listening on 0.0.0.0:${PORT}`);
-  console.log(`[Debug Env] PORT: ${process.env.PORT}, SERVER_PORT: ${process.env.SERVER_PORT}, APP_PORT: ${process.env.APP_PORT}`);
+const PORT = Number(process.env.PORT) || Number(process.env.SERVER_PORT) || Number(process.env.APP_PORT) || config.port || 3000;
+const HOST = '0.0.0.0';
+
+server.listen(PORT, HOST, () => {
+  console.log(`[Gembul Agent] listening on ${HOST}:${PORT}`);
+  console.log(`[Gembul Agent] model: ${antigravity.status().model} | antigravity: ${antigravity.status().connected ? 'connected' : 'not connected'}`);
 });
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    wss.close();
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5000).unref();
+  });
+}

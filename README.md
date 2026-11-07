@@ -1,32 +1,67 @@
 # Gembul Agent
 
-Gembul Agent is a lightweight animated 2D agent office built for Botkeep. Gembul (PM), Bulu (Developer), and Kecil (Reviewer) collaborate through an Antigravity OAuth session. The canvas animates each avatar between desk and task position as server-side task phases change.
+Kantor virtual 2D ringan untuk tiga agen yang bekerja berantai:
 
-## Deploy on Botkeep
+| Agen | Peran | Tugas |
+| --- | --- | --- |
+| **Gembul** | Project Manager | memecah tujuan jadi spesifikasi kerja |
+| **Bulu** | Developer | mengeksekusi spesifikasi jadi hasil teknis |
+| **Kecil** | Reviewer / QA | mengaudit hasil dan memberi verdict |
 
-Deploy `jafit1/muse-office`, branch `main`, using Node.js 20 or newer. Configure a persistent volume and set:
+Semua inferensi lewat **sesi login Google Antigravity** (OAuth), bukan API key. Avatar di canvas berjalan mengikuti fase kerja riil: diam di meja saat `idle`, menunduk ke layar saat `thinking`, berjalan ke jalur serah-terima saat `talking`, lalu kembali ke meja.
+
+## Alur OAuth Antigravity
+
+1. `GET /api/auth/antigravity/start` → redirect ke Google (`cloud-platform`, `userinfo.email`, `userinfo.profile`, `cclog`, `experimentsandconfigs`, `access_type=offline`, `prompt=consent`).
+2. `GET /api/auth/antigravity/callback` → tukar `code` jadi token, ambil `project_id` dari `v1internal:loadCodeAssist`, jalankan `onboardUser` bila project belum ada.
+3. Token + refresh token disimpan di `DATA_DIR/antigravity.json` (mode 0600). Token di-refresh otomatis; `invalid_grant` menghapus sesi dan meminta login ulang.
+4. Generasi teks: `POST https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent` dengan payload `{ project, model, userAgent, requestId, request }`.
+
+## Deploy di Botkeep
+
+Deploy repo `jafit1/muse-office`, branch `main`. Buildpack Node, perintah build `npm install --omit=dev`, start `npm start`, Node 20+.
+
+Variabel yang wajib diisi:
 
 ```text
 ANTIGRAVITY_CLIENT_ID=...
 ANTIGRAVITY_CLIENT_SECRET=...
-ANTIGRAVITY_CALLBACK_URL=https://YOUR-STABLE-DOMAIN/api/auth/antigravity/callback
+ANTIGRAVITY_CALLBACK_URL=https://DOMAIN-TETAP/api/auth/antigravity/callback
 ANTIGRAVITY_MODEL=gemini-3.8-flash
-DATA_DIR=/path/to/persistent-volume
+DATA_DIR=/path/ke/volume/persistent
 PORT=3000
 ```
 
-The OAuth redirect URI must exactly match `ANTIGRAVITY_CALLBACK_URL`. Put the persistent volume at `DATA_DIR`; the refreshable login is stored in `antigravity.json`. Do not commit that file or expose it. Login by opening the service and pressing **LOGIN GOOGLE**. `/health` reports app and provider connectivity metadata without tokens.
+Langkah di Google Cloud Console:
 
-## Resource profile
+1. APIs & Services → Credentials → **Create credentials → OAuth client ID → Web application**.
+2. Authorized redirect URI: `https://DOMAIN-TETAP/api/auth/antigravity/callback`. Harus sama persis dengan `ANTIGRAVITY_CALLBACK_URL`, termasuk skema dan tanpa slash di akhir.
+3. Salin Client ID dan Client Secret ke env Botkeep. Jangan commit ke repo — GitHub Push Protection menolak nilai ini.
 
-The app runs an Express server, serves static HTML/Canvas, and uses one WebSocket connection per browser. No frontend framework, Three.js, database, or build step. `botkeep.json` documents a deployment target matching the supplied limits (1537 MB memory, 1 CPU, 1024 MB storage); actual consumption depends on Botkeep runtime overhead and must be verified in its dashboard.
+`DATA_DIR` harus volume persisten; kalau tidak, login hilang setiap redeploy dan harus authorize ulang. Set `ANTIGRAVITY_CALLBACK_URL` eksplisit supaya callback tidak pernah dibangun dari host internal proxy.
 
-## Local run
+Model: id ramah diperluas otomatis (`gemini-3.8-flash` → `gemini-3.8-flash-medium(medium)`), dan string preset upstream diterima apa adanya, mis. `gemini-3.8-flash-high(high)`.
+
+## Pemakaian
+
+1. Buka service, tekan **LOGIN GOOGLE**, setujui consent.
+2. Status berubah jadi `CONNECTED` dan email akun muncul di kanan atas.
+3. Tulis tujuan di **Mission Dispatch**, tekan **DISPATCH**. Satu tugas diproses pada satu waktu (`409` kalau masih berjalan), dan ditolak dengan `401` kalau belum login.
+4. Feed **Inter-Agent Protocol Bus** menampilkan serah-terima Gembul → Bulu → Kecil.
+
+Endpoint bantu: `GET /health` (uptime + status koneksi, tanpa token), `GET /api/antigravity/status`, `GET /api/state`.
+
+## Profil resource
+
+Tanpa framework frontend, tanpa Three.js, tanpa database, tanpa langkah build. Express menyajikan satu halaman HTML + canvas dan satu socket WebSocket per browser. Target yang dipegang: **~1.5 GB RAM, 1 vCPU, 1 GB storage**; konsumsi sebenarnya tetap perlu dicek di dashboard Botkeep karena overhead runtime ikut dihitung.
+
+## Lokal
 
 ```bash
 npm install
+cp .env.example .env      # isi nilai sebenarnya
+npm run start:local       # node --env-file=.env server.js
 npm test
-npm start
 ```
 
-Open `http://localhost:3000`. Node.js 20+ is recommended.
+Buka `http://localhost:3000`.

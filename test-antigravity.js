@@ -16,3 +16,19 @@ test('web crypto primitives required for OAuth state and request identity exist'
   assert.equal(typeof crypto.randomBytes, 'function');
   assert.equal(typeof crypto.randomUUID, 'function');
 });
+
+test('friendly model ids expand to the upstream Antigravity preset string', () => {
+  assert.equal(antigravity.resolveModel('gemini-3.8-flash'), 'gemini-3.8-flash-medium(medium)');
+  assert.equal(antigravity.resolveModel('gemini-3.8-flash-high'), 'gemini-3.8-flash-high(high)');
+  assert.equal(antigravity.resolveModel('gemini-3.7-flash-low'), 'gemini-3.7-flash-low(low)');
+  // Already a preset: passed through untouched.
+  assert.equal(antigravity.resolveModel('gemini-3.8-flash-medium(medium)'), 'gemini-3.8-flash-medium(medium)');
+  // Unknown ids are not rewritten.
+  assert.equal(antigravity.resolveModel('claude-sonnet-4.5'), 'claude-sonnet-4.5');
+});
+
+test('session id is a signed int64 decimal, matching the IDE wire format', () => {
+  const id = antigravity.numericSessionId();
+  assert.match(id, /^-\d+$/);
+  assert.notEqual(antigravity.numericSessionId(), id);
+});

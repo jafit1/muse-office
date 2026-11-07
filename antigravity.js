@@ -51,47 +51,146 @@ async function refresh(current) {
 async function ensureToken() {
   const current = readState();
   if (!current) throw Object.assign(new Error('Antigravity belum terhubung.'), { status: 401 });
-  if (current.expiresAt && current.expiresAt > Date.now() + 120000) return current;
+  if (current.expiresAt && current.expiresAt > Date.now() + 300000) return current;
   if (!current.refreshToken) throw Object.assign(new Error('Sesi Antigravity kedaluwarsa; login ulang diperlukan.'), { status: 401 });
   if (!refreshPromise) refreshPromise = refresh(current).finally(() => { refreshPromise = null; });
-  return (await refreshPromise) || (() => { throw Object.assign(new Error('Refresh sesi Antigravity gagal; login ulang diperlukan.'), { status: 401 }); })();
+  const next = await refreshPromise;
+  if (!next?.accessToken) throw Object.assign(new Error('Refresh sesi Antigravity gagal; login ulang diperlukan.'), { status: 401 });
+  return next;
 }
+
+// A token can be revoked before it expires, so a 401 has to force the refresh
+// instead of re-reading the same fresh-looking cache.
+async function forceRefresh() {
+  const current = readState();
+  if (!current?.refreshToken) throw Object.assign(new Error('Sesi Antigravity tidak bisa diperbarui; login ulang.'), { status: 401 });
+  const next = await refresh(current);
+  if (!next?.accessToken) throw Object.assign(new Error('Refresh sesi Antigravity gagal; login ulang.'), { status: 401 });
+  return next;
+}
+
+function projectOf(assist) {
+  const raw = assist?.cloudaicompanionProject;
+  return (typeof raw === 'object' ? raw?.id : raw) || assist?.project || '';
+}
+
+async function loadProject(headers, tier) {
+  const assist = await jsonFetch(CODE_ASSIST_URL, { method: 'POST', headers, body: JSON.stringify({ metadata: METADATA }) });
+  let projectId = projectOf(assist);
+  if (projectId) return { projectId, assist };
+  // No project yet: provision one, then poll until Cloud Code reports it.
+  await fetch(ONBOARD_URL, { method: 'POST', headers, body: JSON.stringify({ tierId: tier, metadata: METADATA }) }).catch(() => {});
+  for (let i = 0; i < 6 && !projectId; i++) {
+    await new Promise(r => setTimeout(r, 1500));
+    const again = await jsonFetch(CODE_ASSIST_URL, { method: 'POST', headers, body: JSON.stringify({ metadata: METADATA }) }).catch(() => null);
+    projectId = projectOf(again);
+  }
+  return { projectId, assist };
+}
+
 async function connectCode(code, req) {
   const tokens = await exchange(code, req);
   if (!tokens.refresh_token && !readState()?.refreshToken) throw new Error('Google tidak mengembalikan refresh token. Login ulang dengan consent penuh.');
   const headers = { Authorization: `Bearer ${tokens.access_token}`, 'Content-Type': 'application/json', 'User-Agent': USER_AGENT, 'x-request-source': 'local' };
   const info = await jsonFetch(`${USERINFO_URL}?alt=json`, { headers });
-  const assist = await jsonFetch(CODE_ASSIST_URL, { method: 'POST', headers, body: JSON.stringify({ metadata: METADATA }) });
-  let projectId = typeof assist.cloudaicompanionProject === 'object' ? assist.cloudaicompanionProject?.id : assist.cloudaicompanionProject;
+  const assist = await jsonFetch(CODE_ASSIST_URL, { method: 'POST', headers, body: JSON.stringify({ metadata: METADATA }) }).catch(() => ({}));
   const tier = assist.allowedTiers?.find(t => t.isDefault)?.id || 'legacy-tier';
+  const { projectId } = await loadProject(headers, tier);
   if (!projectId) throw new Error('Antigravity tidak memberikan project ID untuk akun ini.');
-  const saved = { accessToken: tokens.access_token, refreshToken: tokens.refresh_token, expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000, projectId, email: info.email || '' };
+  const saved = {
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token || readState()?.refreshToken,
+    expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000,
+    projectId,
+    email: info.email || '',
+    tier
+  };
   saveState(saved);
-  fetch(ONBOARD_URL, { method: 'POST', headers, body: JSON.stringify({ tierId: tier, metadata: METADATA }) }).catch(() => {});
   return saved;
 }
+
+// Antigravity wants the upstream preset string (`gemini-3.8-flash-medium(medium)`),
+// not the registry's friendly id, so the friendly form is expanded here.
+function resolveModel(raw) {
+  const id = (raw || process.env.ANTIGRAVITY_MODEL || 'gemini-3.8-flash').trim();
+  if (id.includes('(')) return id;
+  const tiered = id.match(/^(gemini-[\d.]+-flash)-(high|medium|low)$/);
+  if (tiered) return `${tiered[1]}-${tiered[2]}(${tiered[2]})`;
+  if (/^gemini-[\d.]+-flash$/.test(id)) return `${id}-medium(medium)`;
+  return id;
+}
+
+// Real Antigravity sessions are decimal int64 strings.
+function numericSessionId() {
+  const n = BigInt('0x' + crypto.randomBytes(8).toString('hex')) & 0x7fffffffffffffffn;
+  return `-${n}`;
+}
+
 async function generate(agent, prompt) {
   let creds = await ensureToken();
-  const model = process.env.ANTIGRAVITY_MODEL || 'gemini-3.8-flash';
-  const request = { project: creds.projectId, model, userAgent: 'antigravity', requestId: `agent/${crypto.randomUUID()}/${Date.now()}`, request: { contents: [{ role: 'user', parts: [{ text: prompt }] }], sessionId: crypto.randomUUID(), generationConfig: { maxOutputTokens: 8192, temperature: 0.5 } } };
-  let res;
-  let body = {};
-  for (const base of API_BASES) {
-    res = await fetch(`${base}/v1internal:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${creds.accessToken}`, 'User-Agent': USER_AGENT }, body: JSON.stringify(request) });
-    body = await res.json().catch(() => ({}));
-    if (res.ok || (res.status !== 404 && res.status !== 502 && res.status !== 503)) break;
+  const model = resolveModel();
+  const callBody = creds => JSON.stringify({
+    project: creds.projectId,
+    model,
+    userAgent: 'antigravity',
+    // Upstream validates this shape: agent/<conversation>/<ms>/<trajectory>/<step>
+    requestId: `agent/${crypto.randomUUID()}/${Date.now()}/${crypto.randomUUID()}/1`,
+    request: {
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      sessionId: numericSessionId(),
+      generationConfig: { maxOutputTokens: 8192, temperature: 0.5 }
+    }
+  });
+  const headers = creds => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${creds.accessToken}`, 'User-Agent': USER_AGENT });
+
+  async function attempt() {
+    let res;
+    let body = {};
+    for (const base of API_BASES) {
+      res = await fetch(`${base}/v1internal:generateContent`, { method: 'POST', headers: headers(creds), body: callBody(creds) });
+      body = await res.json().catch(() => ({}));
+      if (res.ok || (res.status !== 404 && res.status !== 502 && res.status !== 503)) break;
+    }
+    return { res, body };
   }
-  if (res.status === 401 && creds.refreshToken) {
-    creds = await ensureToken();
-    res = await fetch(`${API_BASES[0]}/v1internal:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${creds.accessToken}`, 'User-Agent': USER_AGENT }, body: JSON.stringify({ ...request, project: creds.projectId }) });
-    body = await res.json().catch(() => ({}));
+
+  let { res, body } = await attempt();
+  if (res.status === 401) {
+    creds = await forceRefresh();
+    ({ res, body } = await attempt());
+  }
+  if (res.status === 429 || res.status === 503) {
+    await new Promise(r => setTimeout(r, 1500 + Math.random() * 1000));
+    ({ res, body } = await attempt());
   }
   if (!res.ok) throw Object.assign(new Error(body.error?.message || `Antigravity HTTP ${res.status}`), { status: res.status });
-  const text = body.response?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim() || body.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim();
+
+  const pick = payload => payload?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim();
+  const text = pick(body.response) || pick(body);
   if (!text) throw new Error('Antigravity tidak mengembalikan teks.');
   return text;
 }
-function status() { const s = readState(); return { connected: !!s, email: s?.email || '', projectIdSet: !!s?.projectId, model: process.env.ANTIGRAVITY_MODEL || 'gemini-3.8-flash' }; }
-function start(req) { if (!CLIENT_ID || !CLIENT_SECRET) throw new Error('Atur ANTIGRAVITY_CLIENT_ID dan ANTIGRAVITY_CLIENT_SECRET di environment.'); const nonce = crypto.randomBytes(24).toString('hex'); pending.set(nonce, Date.now() + 300000); return authUrl(req, nonce); }
-function consume(nonce) { const expiry = pending.get(nonce); pending.delete(nonce); return expiry && expiry > Date.now(); }
-module.exports = { start, consume, connectCode, generate, status };
+
+function status() {
+  const s = readState();
+  return {
+    connected: !!s?.accessToken,
+    needsRefresh: !!s && s.expiresAt <= Date.now() + 300000,
+    email: s?.email || '',
+    projectIdSet: !!s?.projectId,
+    model: resolveModel(),
+    callbackConfigured: !!PUBLIC_CALLBACK_URL,
+    oauthConfigured: !!(CLIENT_ID && CLIENT_SECRET)
+  };
+}
+
+function start(req) {
+  if (!CLIENT_ID || !CLIENT_SECRET) throw new Error('Atur ANTIGRAVITY_CLIENT_ID dan ANTIGRAVITY_CLIENT_SECRET di environment.');
+  const now = Date.now();
+  for (const [nonce, expiry] of pending) if (expiry <= now) pending.delete(nonce);
+  const nonce = crypto.randomBytes(24).toString('hex');
+  pending.set(nonce, now + 300000);
+  return authUrl(req, nonce);
+}
+function consume(nonce) { const expiry = pending.get(nonce); pending.delete(nonce); return !!expiry && expiry > Date.now(); }
+module.exports = { start, consume, connectCode, generate, status, resolveModel, numericSessionId };

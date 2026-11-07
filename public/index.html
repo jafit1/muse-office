@@ -119,6 +119,15 @@
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.4; transform: scale(0.85); }
     }
+    .live-indicator.offline {
+      background: rgba(245, 158, 11, 0.1);
+      border-color: rgba(245, 158, 11, 0.3);
+      color: #fbbf24;
+    }
+    .live-indicator.offline .pulse-dot {
+      background: #f59e0b;
+      box-shadow: 0 0 8px #f59e0b;
+    }
 
     /* Main Workspace Layout */
     main {
@@ -459,9 +468,9 @@
       </div>
     </div>
     <div class="header-status">
-      <div class="live-indicator">
+      <div class="live-indicator offline" id="liveIndicator">
         <div class="pulse-dot"></div>
-        <span>CLUSTER ACTIVE</span>
+        <span id="liveLabel">CONNECTING</span>
       </div>
     </div>
   </header>
@@ -540,20 +549,55 @@
     const taskInput = document.getElementById('taskInput');
     const authStatus = document.getElementById('authStatus');
     const authButton = document.getElementById('authButton');
-    fetch('/api/antigravity/status').then(r => r.json()).then(s => {
-      authStatus.textContent = s.connected ? `Antigravity: ${s.email || 'connected'}` : 'Antigravity: belum login';
-      if (s.connected) { authButton.textContent = 'CONNECTED'; authButton.style.background = '#047857'; }
-    }).catch(() => { authStatus.textContent = 'Antigravity: offline'; });
+    function paintAuth(s) {
+      if (s.connected) {
+        authStatus.textContent = `Antigravity: ${s.email || 'connected'}`;
+        authButton.textContent = 'CONNECTED';
+        authButton.style.background = '#047857';
+        authButton.removeAttribute('href');
+      } else {
+        authStatus.textContent = 'Antigravity: belum login';
+        authButton.textContent = 'LOGIN GOOGLE';
+        authButton.style.background = '';
+        authButton.href = '/api/auth/antigravity/start';
+        if (s.oauthConfigured === false) authStatus.textContent = 'Antigravity: OAuth belum diset';
+      }
+    }
+
+    function refreshAuth() {
+      return fetch('/api/antigravity/status', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(paintAuth)
+        .catch(() => { authStatus.textContent = 'Antigravity: offline'; });
+    }
+
+    refreshAuth();
+    if (new URLSearchParams(location.search).has('antigravity')) {
+      history.replaceState({}, '', location.pathname);
+    }
 
     let state = {
       agents: [
-        { id: "agent_pm", name: "Gembul", role: "Project Manager", status: "idle", desk: { x: 160, y: 220 }, color: "#6366f1", bubble: "" },
-        { id: "agent_dev", name: "Bulu", role: "Fullstack Dev", status: "idle", desk: { x: 450, y: 220 }, color: "#10b981", bubble: "" },
-        { id: "agent_qa", name: "Kecil", role: "Security / QA", status: "idle", desk: { x: 740, y: 220 }, color: "#f59e0b", bubble: "" }
+        { id: "agent_pm", name: "Gembul", label: "PROJECT MANAGER", status: "idle", desk: { x: 150, y: 250 }, color: "#4A90E2", bubble: "" },
+        { id: "agent_dev", name: "Bulu", label: "DEVELOPER", status: "idle", desk: { x: 450, y: 250 }, color: "#50E3C2", bubble: "" },
+        { id: "agent_qa", name: "Kecil", label: "REVIEWER / QA", status: "idle", desk: { x: 750, y: 250 }, color: "#F5A623", bubble: "" }
       ]
     };
     let eventCount = 0;
     const avatarMotion = new Map();
+
+    // Walking destinations: an agent stands at its own desk while idle or
+    // thinking, and steps into the handoff lane when it has something to say.
+    const TALK_SPOTS = [
+      { x: 300, y: 124 },
+      { x: 600, y: 124 },
+      { x: 812, y: 124 }
+    ];
+
+    function avatarTarget(ag, idx) {
+      if (ag.status === 'talking') return TALK_SPOTS[idx] || { x: ag.desk.x, y: ag.desk.y - 40 };
+      return { x: ag.desk.x, y: ag.desk.y - 40 };
+    }
 
     function moveAvatar(agent, x, y, phase) {
       const motion = avatarMotion.get(agent.id) || { x, y, fromX: x, fromY: y, toX: x, toY: y, phase: '' };
@@ -569,26 +613,55 @@
       return motion;
     }
 
-    // WebSocket link
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${location.host}`);
+    // Live bus. Botkeep (and any proxy in front of it) can drop an idle socket,
+    // so the link reconnects on its own instead of freezing the office.
+    let ws = null;
+    let retryMs = 1000;
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'INIT') {
-        state = data.payload;
-        renderCards();
-        (state.logs || []).forEach(appendFeed);
-      } else if (data.type === 'AGENT_UPDATE') {
-        const i = state.agents.findIndex(a => a.id === data.payload.id);
-        if (i !== -1) {
-          state.agents[i] = data.payload;
+    const liveIndicator = document.getElementById('liveIndicator');
+    const liveLabel = document.getElementById('liveLabel');
+
+    function paintLive(online) {
+      liveIndicator.classList.toggle('offline', !online);
+      liveLabel.textContent = online ? 'CLUSTER ACTIVE' : 'RECONNECTING';
+    }
+
+    function connectBus() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${location.host}`);
+
+      ws.onopen = () => { retryMs = 1000; paintLive(true); refreshAuth(); };
+
+      ws.onmessage = (event) => {
+        let data;
+        try { data = JSON.parse(event.data); } catch { return; }
+        if (data.type === 'INIT') {
+          state = data.payload;
+          feedBody.innerHTML = '';
+          eventCount = 0;
+          logCounter.innerText = '0 events';
           renderCards();
+          (state.logs || []).forEach(appendFeed);
+        } else if (data.type === 'AGENT_UPDATE') {
+          const i = (state.agents || []).findIndex(a => a.id === data.payload.id);
+          if (i !== -1) {
+            state.agents[i] = data.payload;
+            renderCards();
+          }
+        } else if (data.type === 'NEW_LOG') {
+          appendFeed(data.payload);
         }
-      } else if (data.type === 'NEW_LOG') {
-        appendFeed(data.payload);
-      }
-    };
+      };
+
+      ws.onclose = () => {
+        paintLive(false);
+        retryMs = Math.min(retryMs * 1.8, 15000);
+        setTimeout(connectBus, retryMs);
+      };
+      ws.onerror = () => { try { ws.close(); } catch {} };
+    }
+
+    connectBus();
 
     function renderCards() {
       agentCardsContainer.innerHTML = state.agents.map(ag => {
@@ -598,19 +671,19 @@
           <div class="agent-card" style="--card-accent: ${ag.color}">
             <div class="agent-card-header">
               <div class="agent-avatar" style="background: ${ag.color}">
-                ${ag.name[0]}
+                ${escapeHtml(ag.name[0])}
               </div>
               <div class="agent-info">
-                <h3>${ag.name}</h3>
-                <span>${ag.id.replace('agent_', '').toUpperCase()} TIER</span>
+                <h3>${escapeHtml(ag.name)}</h3>
+                <span>${escapeHtml(ag.label || ag.id.replace('agent_', '').toUpperCase())}</span>
               </div>
             </div>
             <div class="agent-pill ${pillClass}">
               <span>●</span>
-              <span>${statusLabel}</span>
+              <span>${escapeHtml(statusLabel)}</span>
             </div>
             <div class="agent-desc">
-              ${ag.bubble ? `<strong style="color:#fff">"${escapeHtml(ag.bubble)}"</strong>` : `Awaiting task dispatch...`}
+              ${ag.bubble ? `<strong style="color:#fff">"${escapeHtml(ag.bubble)}"</strong>` : `Menunggu tugas...`}
             </div>
           </div>
         `;
@@ -623,10 +696,8 @@
       const div = document.createElement('div');
       div.className = 'feed-item';
       
-      let borderCol = '#3b82f6';
-      if (log.from.includes('Alice')) borderCol = '#6366f1';
-      if (log.from.includes('Bob')) borderCol = '#10b981';
-      if (log.from.includes('Charlie')) borderCol = '#f59e0b';
+      const speaker = (state.agents || []).find(a => log.from.includes(a.name));
+      const borderCol = speaker ? speaker.color : '#3b82f6';
       div.style.borderLeftColor = borderCol;
 
       div.innerHTML = `
@@ -658,15 +729,33 @@
       }
     });
 
+    function localLog(text) {
+      appendFeed({
+        timestamp: new Date().toLocaleTimeString('id-ID', { hour12: false }),
+        from: 'SYSTEM',
+        to: 'OPERATOR',
+        text
+      });
+    }
+
     async function sendTask() {
       const val = taskInput.value.trim();
       if (!val) return;
       taskInput.value = '';
-      await fetch('/api/task', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: val })
-      });
+      try {
+        const res = await fetch('/api/task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task: val })
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          localLog(body.error || `Tugas ditolak server (${res.status}).`);
+          if (res.status === 401) refreshAuth();
+        }
+      } catch (e) {
+        localLog('Server tidak terjangkau. Cek koneksi lalu coba lagi.');
+      }
     }
 
     // Modern 2D Canvas Renderer
@@ -690,99 +779,137 @@
       ctx.roundRect(40, 60, canvas.width - 80, canvas.height - 120, 16);
       ctx.fill();
 
-      // Render Agents & Workstations
-      (state.agents || []).forEach((ag, idx) => {
+      // Furniture layer. Desks never move, so they are drawn once before any
+      // avatar: a walking agent then passes its own desk instead of dragging it.
+      (state.agents || []).forEach(ag => {
+        const d = ag.desk;
         const busy = ag.status !== 'idle';
-        const targetX = busy ? ag.desk.x + (idx === 0 ? 68 : idx === 1 ? -68 : 68) : ag.desk.x;
-        const targetY = busy ? ag.desk.y - 66 : ag.desk.y;
-        const motion = moveAvatar(ag, targetX, targetY, `${ag.status}:${targetX}:${targetY}`);
-        const x = motion.x;
-        const y = motion.y;
+        const glow = ag.status === 'thinking' ? '#f59e0b' : (ag.status === 'talking' ? ag.color : '#3b82f6');
 
-        // Desk Shadow
         ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
         ctx.beginPath();
-        ctx.ellipse(x, y + 42, 60, 18, 0, 0, Math.PI * 2);
+        ctx.ellipse(d.x, d.y + 42, 60, 18, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // Modern Glassmorphism Desk
         ctx.fillStyle = '#1a2233';
         ctx.strokeStyle = '#2d3b55';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.roundRect(x - 55, y + 5, 110, 50, 10);
+        ctx.roundRect(d.x - 55, d.y + 5, 110, 50, 10);
         ctx.fill();
         ctx.stroke();
 
-        // Dual Monitor Setup
-        const isBusy = ag.status !== 'idle';
-        const screenGlow = ag.status === 'thinking' ? '#f59e0b' : (ag.status === 'talking' ? ag.color : '#3b82f6');
-        
-        // Monitor Left
         ctx.fillStyle = '#0f172a';
-        ctx.fillRect(x - 42, y + 12, 38, 22);
-        ctx.strokeStyle = isBusy ? screenGlow : '#334155';
+        ctx.fillRect(d.x - 42, d.y + 12, 38, 22);
+        ctx.fillRect(d.x + 4, d.y + 12, 38, 22);
+        ctx.strokeStyle = busy ? glow : '#334155';
         ctx.lineWidth = 1.5;
-        ctx.strokeRect(x - 42, y + 12, 38, 22);
+        ctx.strokeRect(d.x - 42, d.y + 12, 38, 22);
+        ctx.strokeRect(d.x + 4, d.y + 12, 38, 22);
 
-        // Monitor Right
-        ctx.fillStyle = '#0f172a';
-        ctx.fillRect(x + 4, y + 12, 38, 22);
-        ctx.strokeStyle = isBusy ? screenGlow : '#334155';
-        ctx.strokeRect(x + 4, y + 12, 38, 22);
-
-        // Screen code lines effect
-        if (isBusy) {
-          ctx.fillStyle = screenGlow;
-          ctx.fillRect(x - 38, y + 16, 20, 2);
-          ctx.fillRect(x - 38, y + 21, 28, 2);
-          ctx.fillRect(x + 8, y + 16, 26, 2);
-          ctx.fillRect(x + 8, y + 21, 16, 2);
+        if (busy) {
+          ctx.fillStyle = glow;
+          ctx.fillRect(d.x - 38, d.y + 16, 20, 2);
+          ctx.fillRect(d.x - 38, d.y + 21, 28, 2);
+          ctx.fillRect(d.x + 8, d.y + 16, 26, 2);
+          ctx.fillRect(d.x + 8, d.y + 21, 16, 2);
         }
 
-        // Ergonomic Chair
-        ctx.fillStyle = '#111827';
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.5)';
+        ctx.font = '600 10px JetBrains Mono';
+        ctx.textAlign = 'center';
+        ctx.fillText(ag.label || ag.id.replace('agent_', '').toUpperCase(), d.x, d.y + 76);
+      });
+
+      // One motion sample per agent for this frame.
+      const motionOf = (state.agents || []).map((ag, idx) => {
+        const t = avatarTarget(ag, idx);
+        return moveAvatar(ag, t.x, t.y, ag.status);
+      });
+
+      // Handoff link: a streaming dashed line runs from a talking agent to the
+      // desk it is handing work to, so the relay reads without the feed.
+      (state.agents || []).forEach((ag, idx) => {
+        const next = (state.agents || [])[idx + 1];
+        if (ag.status !== 'talking' || !next) return;
+        const from = motionOf[idx];
+        ctx.save();
+        ctx.setLineDash([6, 8]);
+        ctx.lineDashOffset = -tick * 24;
+        ctx.strokeStyle = ag.color;
+        ctx.globalAlpha = 0.5;
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.ellipse(x, y - 10, 22, 16, 0, 0, Math.PI * 2);
+        ctx.moveTo(from.x, from.y - 44);
+        ctx.lineTo(next.desk.x, next.desk.y - 44);
+        ctx.stroke();
+        ctx.restore();
+      });
+
+      // Avatar layer
+      (state.agents || []).forEach((ag, idx) => {
+        const m = motionOf[idx];
+        const x = m.x;
+        const y = m.y;
+        const busy = ag.status !== 'idle';
+        const walking = Math.hypot(m.toX - m.x, m.toY - m.y) > 1.2;
+        const gait = Math.sin(tick * 14 + idx * 1.7);
+        const swing = walking ? gait * 5 : 0;
+        const bob = walking ? Math.abs(gait) * 2 : Math.sin(tick + idx) * 1.2;
+        const headY = y - 46 + bob;
+        const bodyY = y - 30 + bob;
+
+        // Ground shadow keeps the avatar pinned to the floor while it moves.
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+        ctx.beginPath();
+        ctx.ellipse(x, y, 15, 5.5, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // Animated Avatar Floating / Breathing
-        const walking = Math.hypot(motion.toX - motion.x, motion.toY - motion.y) > 1;
-        const step = walking ? Math.sin(tick * 12 + idx) * 4 : Math.sin(tick + idx) * 2;
-        const floatY = y - 32 + step;
+        // Legs: they only break step while the avatar is actually travelling.
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x - 5, y - 12 + bob); ctx.lineTo(x - 5 + swing, y - 1);
+        ctx.moveTo(x + 5, y - 12 + bob); ctx.lineTo(x + 5 - swing, y - 1);
+        ctx.stroke();
 
-        // Aura pulse if thinking/talking
-        if (isBusy) {
+        if (busy) {
           ctx.fillStyle = `${ag.color}22`;
           ctx.beginPath();
-          ctx.arc(x, floatY, 32 + Math.sin(tick * 3) * 4, 0, Math.PI * 2);
+          ctx.arc(x, bodyY - 8, 30 + Math.sin(tick * 3) * 4, 0, Math.PI * 2);
           ctx.fill();
         }
 
-        // Agent Head & Body
+        // Torso
         ctx.fillStyle = ag.color;
         ctx.beginPath();
-        ctx.arc(x, floatY, 18, 0, Math.PI * 2);
+        ctx.roundRect(x - 11, bodyY, 22, 20, 7);
         ctx.fill();
-        ctx.strokeStyle = '#ffffff';
+
+        // Head
+        ctx.beginPath();
+        ctx.arc(x, headY, 13, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Visor / Eyes
+        // Visor
         ctx.fillStyle = '#0f172a';
         ctx.beginPath();
-        ctx.roundRect(x - 10, floatY - 4, 20, 8, 4);
+        ctx.roundRect(x - 9, headY - 4, 18, 8, 4);
         ctx.fill();
-        ctx.fillStyle = isBusy ? '#38bdf8' : '#64748b';
-        ctx.fillRect(x - 6, floatY - 2, 12, 4);
+        ctx.fillStyle = busy ? (ag.status === 'thinking' ? '#fbbf24' : '#38bdf8') : '#64748b';
+        ctx.fillRect(x - 6, headY - 2, 12, 4);
 
-        // Name Tag
-        ctx.fillStyle = '#ffffff';
+        // Name plate
+        ctx.fillStyle = '#f8fafc';
         ctx.font = '600 12px Plus Jakarta Sans';
         ctx.textAlign = 'center';
-        ctx.fillText(ag.name, x, floatY - 26);
+        ctx.fillText(ag.name, x, headY - 22);
 
-        // Floating Thought / Speech Bubble
+        // Speech bubble
         if (ag.bubble) {
           const bubbleText = ag.bubble.length > 28 ? ag.bubble.substring(0, 26) + '...' : ag.bubble;
           ctx.font = '500 11px JetBrains Mono';
@@ -790,7 +917,7 @@
           const bubbleW = Math.max(textWidth + 24, 80);
           const bubbleH = 28;
           const bx = x - (bubbleW / 2);
-          const by = floatY - 68;
+          const by = headY - 60;
 
           ctx.fillStyle = '#1e293b';
           ctx.strokeStyle = ag.color;
