@@ -9,8 +9,9 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.set('trust proxy', true);
+app.use(express.json({ limit: '256kb' }));
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
 
 let officeState = {
   agents: config.agents.map(a => ({
@@ -48,12 +49,7 @@ function logOffice(from, to, text) {
 }
 
 async function callAntigravity(agentConfig, systemPrompt, userMessage) {
-  try {
-    return await antigravity.generate(agentConfig.id, `${systemPrompt}\n\n${userMessage}`);
-  } catch (err) {
-    console.error(`[Antigravity - ${agentConfig.name}]:`, err.message);
-    return `[Antigravity error for ${agentConfig.name}]: ${err.message}`;
-  }
+  return antigravity.generate(agentConfig.id, `${systemPrompt}\n\n${userMessage}`);
 }
 
 async function runOfficeTask(taskPrompt) {
@@ -62,6 +58,7 @@ async function runOfficeTask(taskPrompt) {
   const qa = config.agents.find(a => a.id === 'agent_qa');
 
   // Step 1: PM analyzes and assigns
+  try {
   updateAgentStatus(pm.id, 'thinking', 'Analyzing task...');
   logOffice('OPERATOR', pm.name, taskPrompt);
 
@@ -93,15 +90,16 @@ async function runOfficeTask(taskPrompt) {
   updateAgentStatus(qa.id, 'talking', 'Deliverable verified!');
   logOffice(qa.name, 'OPERATOR', qaAudit);
 
-  setTimeout(() => {
+  } finally {
     updateAgentStatus(pm.id, 'idle', '');
     updateAgentStatus(dev.id, 'idle', '');
     updateAgentStatus(qa.id, 'idle', '');
-  }, 5000);
+  }
 }
 
 app.get('/api/auth/antigravity/start', (req, res) => {
-  res.redirect(antigravity.start(req));
+  try { res.redirect(antigravity.start(req)); }
+  catch (error) { res.status(503).send(error.message); }
 });
 
 app.get('/api/auth/antigravity/callback', async (req, res) => {
@@ -114,12 +112,21 @@ app.get('/api/auth/antigravity/callback', async (req, res) => {
 });
 
 app.get('/api/antigravity/status', (req, res) => res.json(antigravity.status()));
+app.get('/health', (req, res) => res.json({ status: 'ok', uptime: Math.round(process.uptime()), ...antigravity.status() }));
 
-app.post('/api/task', (req, res) => {
-  const { task } = req.body;
+let activeTask = false;
+app.post('/api/task', async (req, res) => {
+  const task = typeof req.body?.task === 'string' ? req.body.task.trim() : '';
   if (!task) return res.status(400).json({ error: 'Task required' });
-  runOfficeTask(task);
-  res.json({ status: 'queued', task });
+  if (task.length > 8000) return res.status(413).json({ error: 'Task limit is 8000 characters.' });
+  if (!antigravity.status().connected) return res.status(401).json({ error: 'Login ke Antigravity dulu.' });
+  if (activeTask) return res.status(409).json({ error: 'Satu tugas sedang dikerjakan; tunggu sampai selesai.' });
+  activeTask = true;
+  res.status(202).json({ status: 'running', task });
+  runOfficeTask(task).catch(error => {
+    logOffice('SYSTEM', 'OPERATOR', `Tugas gagal: ${error.message}`);
+    console.error('[Task failure]', error);
+  }).finally(() => { activeTask = false; });
 });
 
 app.get('/api/state', (req, res) => res.json(officeState));

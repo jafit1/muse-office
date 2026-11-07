@@ -1,10 +1,11 @@
 {
-  "name": "muse-virtual-office",
+  "name": "gembul-agent-office",
   "version": "1.0.0",
-  "description": "Lightweight 2D Virtual Office for Multi-Account Muse.ai Agents on Botkeep",
+  "description": "Lightweight animated 2D virtual office for Antigravity agents on Botkeep",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test test-*.js"
   },
   "dependencies": {
     "express": "^4.19.2",
