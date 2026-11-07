@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HQ — Muse.ai Autonomous Office</title>
+  <title>Gembul Agent — Autonomous Office</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -454,8 +454,8 @@
         <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
       </div>
       <div class="brand-text">
-        <h1>MUSE.AI AUTONOMOUS HQ</h1>
-        <p>3-Tier Synchronized Agent Cluster</p>
+        <h1>GEMBUL AGENT OFFICE</h1>
+        <p>Antigravity-powered agent cluster</p>
       </div>
     </div>
     <div class="header-status">
@@ -478,7 +478,7 @@
         <div class="viewport-header">
           <div class="viewport-title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M3 9h18"/></svg>
-            <span>Live Office Floor View (2D Isometric Simulation)</span>
+            <span>Gembul Agent — Live Office Floor</span>
           </div>
           <div class="viewport-meta" id="fpsMeta">60 FPS • Realtime Sync</div>
         </div>
@@ -547,12 +547,27 @@
 
     let state = {
       agents: [
-        { id: "agent_pm", name: "Alice", role: "Project Manager", status: "idle", desk: { x: 160, y: 220 }, color: "#6366f1", bubble: "" },
-        { id: "agent_dev", name: "Bob", role: "Fullstack Dev", status: "idle", desk: { x: 450, y: 220 }, color: "#10b981", bubble: "" },
-        { id: "agent_qa", name: "Charlie", role: "Security / QA", status: "idle", desk: { x: 740, y: 220 }, color: "#f59e0b", bubble: "" }
+        { id: "agent_pm", name: "Gembul", role: "Project Manager", status: "idle", desk: { x: 160, y: 220 }, color: "#6366f1", bubble: "" },
+        { id: "agent_dev", name: "Bulu", role: "Fullstack Dev", status: "idle", desk: { x: 450, y: 220 }, color: "#10b981", bubble: "" },
+        { id: "agent_qa", name: "Kecil", role: "Security / QA", status: "idle", desk: { x: 740, y: 220 }, color: "#f59e0b", bubble: "" }
       ]
     };
     let eventCount = 0;
+    const avatarMotion = new Map();
+
+    function moveAvatar(agent, x, y, phase) {
+      const motion = avatarMotion.get(agent.id) || { x, y, fromX: x, fromY: y, toX: x, toY: y, phase: '' };
+      if (motion.phase !== phase) {
+        motion.fromX = motion.x; motion.fromY = motion.y;
+        motion.toX = x; motion.toY = y; motion.phase = phase; motion.started = performance.now();
+      }
+      const t = Math.min(1, (performance.now() - (motion.started || 0)) / 850);
+      const eased = t * t * (3 - 2 * t);
+      motion.x = motion.fromX + (motion.toX - motion.fromX) * eased;
+      motion.y = motion.fromY + (motion.toY - motion.fromY) * eased;
+      avatarMotion.set(agent.id, motion);
+      return motion;
+    }
 
     // WebSocket link
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -677,8 +692,12 @@
 
       // Render Agents & Workstations
       (state.agents || []).forEach((ag, idx) => {
-        const x = ag.desk.x;
-        const y = ag.desk.y;
+        const busy = ag.status !== 'idle';
+        const targetX = busy ? ag.desk.x + (idx === 0 ? 68 : idx === 1 ? -68 : 68) : ag.desk.x;
+        const targetY = busy ? ag.desk.y - 66 : ag.desk.y;
+        const motion = moveAvatar(ag, targetX, targetY, `${ag.status}:${targetX}:${targetY}`);
+        const x = motion.x;
+        const y = motion.y;
 
         // Desk Shadow
         ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
@@ -728,7 +747,9 @@
         ctx.fill();
 
         // Animated Avatar Floating / Breathing
-        const floatY = y - 32 + (Math.sin(tick + idx) * 3);
+        const walking = Math.hypot(motion.toX - motion.x, motion.toY - motion.y) > 1;
+        const step = walking ? Math.sin(tick * 12 + idx) * 4 : Math.sin(tick + idx) * 2;
+        const floatY = y - 32 + step;
 
         // Aura pulse if thinking/talking
         if (isBusy) {

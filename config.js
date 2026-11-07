@@ -4,7 +4,7 @@ module.exports = {
   agents: [
     {
       id: "agent_pm",
-      name: "Alice (Project Manager)",
+      name: "Gembul (Project Manager)",
       role: "Breakdown user goal into clear tasks, assign to Developer, and ensure overall alignment.",
       apiKey: process.env.GEMINI_KEY_PM || process.env.GEMINI_API_KEY || '',
       desk: { x: 120, y: 140 },
@@ -12,7 +12,7 @@ module.exports = {
     },
     {
       id: "agent_dev",
-      name: "Bob (Developer)",
+      name: "Bulu (Developer)",
       role: "Write code, design logic, and provide complete technical implementations for tasks from PM.",
       apiKey: process.env.GEMINI_KEY_DEV || process.env.GEMINI_API_KEY || '',
       desk: { x: 340, y: 140 },
@@ -20,7 +20,7 @@ module.exports = {
     },
     {
       id: "agent_qa",
-      name: "Charlie (Reviewer / QA)",
+      name: "Kecil (Reviewer / QA)",
       role: "Audit solutions, verify security and edge-cases, and sign-off on the final deliverable.",
       apiKey: process.env.GEMINI_KEY_QA || process.env.GEMINI_API_KEY || '',
       desk: { x: 560, y: 140 },
