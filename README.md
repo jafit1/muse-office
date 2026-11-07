@@ -4,18 +4,16 @@ Lightweight 2D office for a Project Manager, Developer, and Reviewer that exchan
 
 ## Botkeep environment
 
-Set `GEMINI_API_KEY` to a key created in Google AI Studio. Optional per-agent keys allow separate Google Cloud projects:
+Set these variables in Botkeep:
 
 ```text
-GEMINI_API_KEY=AIza...
-GEMINI_KEY_PM=AIza...
-GEMINI_KEY_DEV=AIza...
-GEMINI_KEY_QA=AIza...
-GEMINI_MODEL=gemini-2.5-flash
+ANTIGRAVITY_CLIENT_ID=your-antigravity-oauth-client-id
+ANTIGRAVITY_CLIENT_SECRET=your-antigravity-oauth-client-secret
+ANTIGRAVITY_MODEL=gemini-3.8-flash
 PORT=3000
 ```
 
-The previous Muse API integration is removed. Keys are read only on the server and are never sent to the browser. This uses the official Gemini API; it does not automate Gemini web cookies or Google account sessions.
+The app uses Google OAuth login for Antigravity, stores the refreshable session and project ID in `DATA_DIR/antigravity.json`, then routes the PM, Developer, and QA requests through Antigravity. Use persistent Botkeep storage and configure the OAuth client's redirect URI as `https://YOUR-DEPLOYMENT/api/auth/antigravity/callback`. OAuth client credentials are not included in this repository.
 
 ## Run locally
 

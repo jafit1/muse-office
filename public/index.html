@@ -468,6 +468,10 @@
 
   <!-- Main View -->
   <main>
+    <div id="authBar" style="position:fixed;right:28px;top:72px;z-index:20;display:flex;gap:8px;align-items:center;font:11px var(--font-mono);color:var(--text-muted)">
+      <span id="authStatus">Antigravity: checking...</span>
+      <a id="authButton" href="/api/auth/antigravity/start" style="color:#fff;background:#4f46e5;padding:7px 10px;border-radius:7px;text-decoration:none">LOGIN GOOGLE</a>
+    </div>
     <!-- Left Section: 2D Canvas & Status Cards -->
     <section class="office-section">
       <div class="viewport-card">
@@ -534,6 +538,12 @@
     const logCounter = document.getElementById('logCounter');
     const agentCardsContainer = document.getElementById('agentCardsContainer');
     const taskInput = document.getElementById('taskInput');
+    const authStatus = document.getElementById('authStatus');
+    const authButton = document.getElementById('authButton');
+    fetch('/api/antigravity/status').then(r => r.json()).then(s => {
+      authStatus.textContent = s.connected ? `Antigravity: ${s.email || 'connected'}` : 'Antigravity: belum login';
+      if (s.connected) { authButton.textContent = 'CONNECTED'; authButton.style.background = '#047857'; }
+    }).catch(() => { authStatus.textContent = 'Antigravity: offline'; });
 
     let state = {
       agents: [

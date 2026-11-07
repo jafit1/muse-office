@@ -1,7 +1,6 @@
 module.exports = {
   port: process.env.PORT || 61342,
-  geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-  geminiBaseUrl: process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/models',
+  antigravityModel: process.env.ANTIGRAVITY_MODEL || 'gemini-3.8-flash',
   agents: [
     {
       id: "agent_pm",

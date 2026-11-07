@@ -3,6 +3,7 @@ const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const config = require('./config');
+const antigravity = require('./antigravity');
 
 const app = express();
 const server = http.createServer(app);
@@ -46,21 +47,12 @@ function logOffice(from, to, text) {
   broadcast('NEW_LOG', logItem);
 }
 
-async function callGemini(agentConfig, systemPrompt, userMessage) {
-  const key = agentConfig.apiKey;
-  if (!key) return `[No Gemini API key configured for ${agentConfig.name}]`;
+async function callAntigravity(agentConfig, systemPrompt, userMessage) {
   try {
-    const url = `${config.geminiBaseUrl}/${encodeURIComponent(config.geminiModel)}:generateContent?key=${encodeURIComponent(key)}`;
-    const res = await fetch(url, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userMessage}` }] }] })
-    });
-    const data = await res.json();
-    if (!res.ok) return `[Gemini HTTP ${res.status} for ${agentConfig.name}]: ${data.error?.message || 'request failed'}`;
-    return data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim() || JSON.stringify(data);
+    return await antigravity.generate(agentConfig.id, `${systemPrompt}\n\n${userMessage}`);
   } catch (err) {
-    console.error(`[Call Error - ${agentConfig.name}]:`, err.message);
-    return `[Error contacting Gemini for ${agentConfig.name}]: ${err.message}`;
+    console.error(`[Antigravity - ${agentConfig.name}]:`, err.message);
+    return `[Antigravity error for ${agentConfig.name}]: ${err.message}`;
   }
 }
 
@@ -73,7 +65,7 @@ async function runOfficeTask(taskPrompt) {
   updateAgentStatus(pm.id, 'thinking', 'Analyzing task...');
   logOffice('OPERATOR', pm.name, taskPrompt);
 
-  const pmInstructions = await callGemini(
+  const pmInstructions = await callAntigravity(
     pm,
     `You are ${pm.name}. Role: ${pm.role}. Convert the user objective into concrete specifications and delegate to Developer (${dev.name}). Concise, actionable, zero filler.`,
     taskPrompt
@@ -83,7 +75,7 @@ async function runOfficeTask(taskPrompt) {
 
   // Step 2: Dev executes
   updateAgentStatus(dev.id, 'thinking', 'Implementing solution...');
-  const devResult = await callGemini(
+  const devResult = await callAntigravity(
     dev,
     `You are ${dev.name}. Role: ${dev.role}. Implement technical solution for: "${pmInstructions}". Provide complete solution, no placeholders.`,
     pmInstructions
@@ -93,7 +85,7 @@ async function runOfficeTask(taskPrompt) {
 
   // Step 3: QA audits
   updateAgentStatus(qa.id, 'thinking', 'Auditing deliverable...');
-  const qaAudit = await callGemini(
+  const qaAudit = await callAntigravity(
     qa,
     `You are ${qa.name}. Role: ${qa.role}. Review work from ${dev.name} against goal: "${taskPrompt}". Output final verdict, verification points, and approval.`,
     devResult
@@ -107,6 +99,21 @@ async function runOfficeTask(taskPrompt) {
     updateAgentStatus(qa.id, 'idle', '');
   }, 5000);
 }
+
+app.get('/api/auth/antigravity/start', (req, res) => {
+  res.redirect(antigravity.start(req));
+});
+
+app.get('/api/auth/antigravity/callback', async (req, res) => {
+  try {
+    if (!req.query.state || !antigravity.consume(req.query.state)) return res.status(400).send('OAuth state tidak valid atau kedaluwarsa.');
+    if (req.query.error) return res.status(400).send(`Login Antigravity gagal: ${req.query.error_description || req.query.error}`);
+    await antigravity.connectCode(req.query.code, req);
+    res.redirect('/?antigravity=connected');
+  } catch (error) { res.status(502).send(`Koneksi Antigravity gagal: ${error.message}`); }
+});
+
+app.get('/api/antigravity/status', (req, res) => res.json(antigravity.status()));
 
 app.post('/api/task', (req, res) => {
   const { task } = req.body;
