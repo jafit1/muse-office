@@ -1,17 +1,27 @@
-# Muse.ai 2D Virtual Office
+# Gemini 2D Virtual Office
 
-Lightweight 2D Virtual Office for Multi-Account Muse.ai Agents designed for low-memory environments (<512MB RAM) like Botkeep.
+Lightweight 2D office for a Project Manager, Developer, and Reviewer that exchange work through a shared task bus. Built for Botkeep and low-memory deployments.
 
-## Environment Variables (Botkeep Dashboard)
-- `PORT`: App port (e.g. `3000`)
-- `MUSE_BASE_URL`: Base API endpoint for Muse.ai (default: `https://api.muse.ai/v1`)
-- `MUSE_KEY_PM`: API Key / token for Alice (Project Manager)
-- `MUSE_KEY_DEV`: API Key / token for Bob (Developer)
-- `MUSE_KEY_QA`: API Key / token for Charlie (Reviewer / QA)
+## Botkeep environment
 
-## Run Locally
+Set `GEMINI_API_KEY` to a key created in Google AI Studio. Optional per-agent keys allow separate Google Cloud projects:
+
+```text
+GEMINI_API_KEY=AIza...
+GEMINI_KEY_PM=AIza...
+GEMINI_KEY_DEV=AIza...
+GEMINI_KEY_QA=AIza...
+GEMINI_MODEL=gemini-2.5-flash
+PORT=3000
+```
+
+The previous Muse API integration is removed. Keys are read only on the server and are never sent to the browser. This uses the official Gemini API; it does not automate Gemini web cookies or Google account sessions.
+
+## Run locally
+
 ```bash
 npm install
 npm start
 ```
+
 Open `http://localhost:3000` in your browser.

@@ -46,34 +46,21 @@ function logOffice(from, to, text) {
   broadcast('NEW_LOG', logItem);
 }
 
-async function callMuseAI(agentConfig, systemPrompt, userMessage) {
+async function callGemini(agentConfig, systemPrompt, userMessage) {
   const key = agentConfig.apiKey;
-  if (!key) {
-    return `[Simulation / No API Key for ${agentConfig.name}]: Checked request for "${userMessage.substring(0, 40)}..."`;
-  }
-
+  if (!key) return `[No Gemini API key configured for ${agentConfig.name}]`;
   try {
-    const res = await fetch(`${config.museBaseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${key}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'muse-spark',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage }
-        ],
-        temperature: 0.5,
-        max_tokens: 600
-      })
+    const url = `${config.geminiBaseUrl}/${encodeURIComponent(config.geminiModel)}:generateContent?key=${encodeURIComponent(key)}`;
+    const res = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userMessage}` }] }] })
     });
     const data = await res.json();
-    return data.choices?.[0]?.message?.content || JSON.stringify(data);
+    if (!res.ok) return `[Gemini HTTP ${res.status} for ${agentConfig.name}]: ${data.error?.message || 'request failed'}`;
+    return data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim() || JSON.stringify(data);
   } catch (err) {
     console.error(`[Call Error - ${agentConfig.name}]:`, err.message);
-    return `[Error contacting Muse API for ${agentConfig.name}]: ${err.message}`;
+    return `[Error contacting Gemini for ${agentConfig.name}]: ${err.message}`;
   }
 }
 
@@ -86,7 +73,7 @@ async function runOfficeTask(taskPrompt) {
   updateAgentStatus(pm.id, 'thinking', 'Analyzing task...');
   logOffice('OPERATOR', pm.name, taskPrompt);
 
-  const pmInstructions = await callMuseAI(
+  const pmInstructions = await callGemini(
     pm,
     `You are ${pm.name}. Role: ${pm.role}. Convert the user objective into concrete specifications and delegate to Developer (${dev.name}). Concise, actionable, zero filler.`,
     taskPrompt
@@ -96,7 +83,7 @@ async function runOfficeTask(taskPrompt) {
 
   // Step 2: Dev executes
   updateAgentStatus(dev.id, 'thinking', 'Implementing solution...');
-  const devResult = await callMuseAI(
+  const devResult = await callGemini(
     dev,
     `You are ${dev.name}. Role: ${dev.role}. Implement technical solution for: "${pmInstructions}". Provide complete solution, no placeholders.`,
     pmInstructions
@@ -106,7 +93,7 @@ async function runOfficeTask(taskPrompt) {
 
   // Step 3: QA audits
   updateAgentStatus(qa.id, 'thinking', 'Auditing deliverable...');
-  const qaAudit = await callMuseAI(
+  const qaAudit = await callGemini(
     qa,
     `You are ${qa.name}. Role: ${qa.role}. Review work from ${dev.name} against goal: "${taskPrompt}". Output final verdict, verification points, and approval.`,
     devResult
