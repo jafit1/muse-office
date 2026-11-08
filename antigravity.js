@@ -213,15 +213,13 @@ async function connectCode(code, req) {
   return saved;
 }
 
-// Antigravity wants the upstream preset string (`gemini-3.8-flash-medium(medium)`),
-// not the registry's friendly id, so the friendly form is expanded here.
+// The API takes the model key verbatim. The IDE-style "(medium)" suffix is not a
+// valid entity id and comes back as 404, so it is stripped here.
 function resolveModel(raw) {
   const id = (raw || process.env.ANTIGRAVITY_MODEL || 'gemini-3.8-flash').trim();
-  if (id.includes('(')) return id;
-  const tiered = id.match(/^(gemini-[\d.]+-flash)-(high|medium|low)$/);
-  if (tiered) return `${tiered[1]}-${tiered[2]}(${tiered[2]})`;
-  if (/^gemini-[\d.]+-flash$/.test(id)) return `${id}-medium(medium)`;
-  return id;
+  const bare = id.replace(/\([^)]*\)\s*$/, '').trim();
+  if (/^gemini-[\d.]+-flash$/.test(bare)) return `${bare}-medium`;
+  return bare;
 }
 
 // Real Antigravity sessions are decimal int64 strings.

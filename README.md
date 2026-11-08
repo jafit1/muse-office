@@ -66,7 +66,7 @@ node login-local.js
 
 Skrip membuka consent screen di browser, menangkap callback di `http://localhost:53682`, lalu mencetak refresh token. Tempel hasilnya ke env `ANTIGRAVITY_REFRESH_TOKEN`; service memakainya untuk menukar access token seperti biasa. Tombol LOGIN GOOGLE tidak dipakai lagi dalam mode ini.
 
-Model: id ramah diperluas otomatis (`gemini-3.8-flash` → `gemini-3.8-flash-medium(medium)`), dan string preset upstream diterima apa adanya, mis. `gemini-3.8-flash-high(high)`.
+Model: id ramah diperluas ke kunci model yang diterima API (`gemini-3.8-flash` → `gemini-3.8-flash-medium`), dan id lain dikirim apa adanya. Akhiran gaya IDE seperti `(medium)` dibuang, karena bentuk itu dijawab `404 Requested entity was not found`.
 
 ## Pemakaian
 

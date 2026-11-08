@@ -35,7 +35,7 @@ test('generate posts the IDE wire format and returns trimmed text', async () => 
 
   const body = JSON.parse(call.body);
   assert.equal(body.project, 'proj-1');
-  assert.equal(body.model, 'gemini-3.8-flash-medium(medium)');
+  assert.equal(body.model, 'gemini-3.8-flash-medium');
   assert.match(body.requestId, /^agent\/[^/]+\/\d+\/[^/]+\/\d+$/);
   assert.match(body.request.sessionId, /^-\d+$/);
   assert.equal(body.request.contents[0].role, 'user');

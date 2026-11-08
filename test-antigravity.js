@@ -17,12 +17,12 @@ test('web crypto primitives required for OAuth state and request identity exist'
   assert.equal(typeof crypto.randomUUID, 'function');
 });
 
-test('friendly model ids expand to the upstream Antigravity preset string', () => {
-  assert.equal(antigravity.resolveModel('gemini-3.8-flash'), 'gemini-3.8-flash-medium(medium)');
-  assert.equal(antigravity.resolveModel('gemini-3.8-flash-high'), 'gemini-3.8-flash-high(high)');
-  assert.equal(antigravity.resolveModel('gemini-3.7-flash-low'), 'gemini-3.7-flash-low(low)');
-  // Already a preset: passed through untouched.
-  assert.equal(antigravity.resolveModel('gemini-3.8-flash-medium(medium)'), 'gemini-3.8-flash-medium(medium)');
+test('friendly model ids expand to the model key the API accepts', () => {
+  assert.equal(antigravity.resolveModel('gemini-3.8-flash'), 'gemini-3.8-flash-medium');
+  assert.equal(antigravity.resolveModel('gemini-3.8-flash-high'), 'gemini-3.8-flash-high');
+  assert.equal(antigravity.resolveModel('gemini-3.7-flash-low'), 'gemini-3.7-flash-low');
+  // The IDE preset form is not a valid entity id; the suffix is dropped.
+  assert.equal(antigravity.resolveModel('gemini-3.8-flash-medium(medium)'), 'gemini-3.8-flash-medium');
   // Unknown ids are not rewritten.
   assert.equal(antigravity.resolveModel('claude-sonnet-4.5'), 'claude-sonnet-4.5');
 });
