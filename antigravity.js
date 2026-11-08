@@ -95,18 +95,53 @@ function projectOf(assist) {
   return (typeof raw === 'object' ? raw?.id : raw) || assist?.project || '';
 }
 
+function tierOf(assist) {
+  return assist?.allowedTiers?.find(t => t.isDefault)?.id?.trim() || 'legacy-tier';
+}
+
+function tierIds(assist) {
+  return (assist?.allowedTiers || []).map(t => t?.id).filter(Boolean);
+}
+
+// Accounts that never get a Cloud Code project still authenticate fine: the
+// IDE sends a generated id and the backend only uses it to attribute quota.
+function synthesizeProjectId() {
+  const adj = ['useful', 'bright', 'swift', 'calm', 'bold'];
+  const noun = ['fuze', 'wave', 'spark', 'flow', 'core'];
+  return `${adj[Math.floor(Math.random() * adj.length)]}-${noun[Math.floor(Math.random() * noun.length)]}-${crypto.randomUUID().slice(0, 5)}`;
+}
+
+const ONBOARD_DELAY_MS = Number(process.env.ANTIGRAVITY_ONBOARD_DELAY_MS) || 1200;
+
 async function loadProject(headers, tier, firstAssist) {
   const assist = firstAssist || await jsonFetch(CODE_ASSIST_URL, { method: 'POST', headers, body: JSON.stringify({ metadata: METADATA }) });
   let projectId = projectOf(assist);
   if (projectId) return { projectId, assist };
-  // No project yet: provision one, then poll until Cloud Code reports it.
+  // No project yet: ask for one, then poll a few times. A slow bootstrap is not
+  // an error — the caller falls back to a generated id and retries later.
   await fetch(ONBOARD_URL, { method: 'POST', headers, body: JSON.stringify({ tierId: tier, metadata: METADATA }) }).catch(() => {});
-  for (let i = 0; i < 6 && !projectId; i++) {
-    await new Promise(r => setTimeout(r, 1500));
+  for (let i = 0; i < 3 && !projectId; i++) {
+    await new Promise(r => setTimeout(r, ONBOARD_DELAY_MS));
     const again = await jsonFetch(CODE_ASSIST_URL, { method: 'POST', headers, body: JSON.stringify({ metadata: METADATA }) }).catch(() => null);
     projectId = projectOf(again);
   }
   return { projectId, assist };
+}
+
+// Re-check on demand: a generated id is replaced the moment the real project
+// shows up, so nobody stays stuck on the fallback forever.
+async function ensureProject(creds) {
+  if (creds.projectId && !creds.projectSynthetic) return creds;
+  const headers = { Authorization: `Bearer ${creds.accessToken}`, 'Content-Type': 'application/json', 'User-Agent': USER_AGENT, 'x-request-source': 'local' };
+  const assist = await jsonFetch(CODE_ASSIST_URL, { method: 'POST', headers, body: JSON.stringify({ metadata: METADATA }) }).catch(() => null);
+  if (!assist) return creds;
+  const found = projectOf(assist);
+  const tier = tierOf(assist);
+  const next = found
+    ? { ...creds, projectId: found, projectSynthetic: false, tier, tiers: tierIds(assist) }
+    : (creds.projectId ? creds : { ...creds, projectId: synthesizeProjectId(), projectSynthetic: true, tier, tiers: tierIds(assist) });
+  if (next !== creds) saveState(next);
+  return next;
 }
 
 async function connectCode(code, req) {
@@ -118,16 +153,18 @@ async function connectCode(code, req) {
     throw Object.assign(new Error(`Akun ${info.email || '(tanpa email)'} tidak ada di ANTIGRAVITY_ALLOWED_EMAILS.`), { status: 403 });
   }
   const assist = await jsonFetch(CODE_ASSIST_URL, { method: 'POST', headers, body: JSON.stringify({ metadata: METADATA }) }).catch(() => ({}));
-  const tier = assist.allowedTiers?.find(t => t.isDefault)?.id || 'legacy-tier';
+  const tier = tierOf(assist);
   const { projectId } = await loadProject(headers, tier, assist);
-  if (!projectId) throw new Error('Antigravity tidak memberikan project ID untuk akun ini.');
   const saved = {
     accessToken: tokens.access_token,
     refreshToken: tokens.refresh_token || readState()?.refreshToken,
     expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000,
-    projectId,
-    email: info.email || '',
-    tier
+    // A missing project is not a failed login: the session is still good.
+    projectId: projectId || synthesizeProjectId(),
+    projectSynthetic: !projectId,
+    tier,
+    tiers: tierIds(assist),
+    email: info.email || ''
   };
   saveState(saved);
   return saved;
@@ -152,6 +189,7 @@ function numericSessionId() {
 
 async function generate(agent, prompt) {
   let creds = await ensureToken();
+  creds = await ensureProject(creds);
   const model = resolveModel();
   const callBody = creds => JSON.stringify({
     project: creds.projectId,
@@ -204,6 +242,9 @@ function status() {
     emailAllowed: emailAllowed(s?.email),
     allowlistSize: ALLOWED_EMAILS.length,
     projectIdSet: !!s?.projectId,
+    projectSynthetic: !!s?.projectSynthetic,
+    tier: s?.tier || '',
+    tiers: s?.tiers || [],
     model: resolveModel(),
     callbackConfigured: !!PUBLIC_CALLBACK_URL,
     clientIdValid: /\.apps\.googleusercontent\.com$/.test(CLIENT_ID),
