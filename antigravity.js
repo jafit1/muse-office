@@ -7,8 +7,13 @@ const crypto = require('crypto');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const TOKEN_FILE = path.join(DATA_DIR, 'antigravity.json');
 const PUBLIC_CALLBACK_URL = (process.env.ANTIGRAVITY_CALLBACK_URL || '').replace(/\/$/, '');
-const CLIENT_ID = process.env.ANTIGRAVITY_CLIENT_ID || '';
-const CLIENT_SECRET = process.env.ANTIGRAVITY_CLIENT_SECRET || '';
+// A client id copied out of a rendered link arrives as a full URL; Google only
+// accepts the bare id, so the scheme and anything after it are stripped here.
+function sanitizeClientId(raw) {
+  return (raw || '').trim().replace(/^["']|["']$/g, '').replace(/^https?:\/\//i, '').replace(/[/?#].*$/, '');
+}
+const CLIENT_ID = sanitizeClientId(process.env.ANTIGRAVITY_CLIENT_ID);
+const CLIENT_SECRET = (process.env.ANTIGRAVITY_CLIENT_SECRET || '').trim().replace(/^["']|["']$/g, '');
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v1/userinfo';
@@ -201,6 +206,7 @@ function status() {
     projectIdSet: !!s?.projectId,
     model: resolveModel(),
     callbackConfigured: !!PUBLIC_CALLBACK_URL,
+    clientIdValid: /\.apps\.googleusercontent\.com$/.test(CLIENT_ID),
     oauthConfigured: !!(CLIENT_ID && CLIENT_SECRET)
   };
 }
@@ -214,4 +220,4 @@ function start(req) {
   return authUrl(req, nonce);
 }
 function consume(nonce) { const expiry = pending.get(nonce); pending.delete(nonce); return !!expiry && expiry > Date.now(); }
-module.exports = { start, consume, connectCode, generate, status, resolveModel, numericSessionId };
+module.exports = { start, consume, connectCode, generate, status, resolveModel, numericSessionId, sanitizeClientId };

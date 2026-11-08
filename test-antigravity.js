@@ -27,6 +27,15 @@ test('friendly model ids expand to the upstream Antigravity preset string', () =
   assert.equal(antigravity.resolveModel('claude-sonnet-4.5'), 'claude-sonnet-4.5');
 });
 
+test('client ids pasted as links are reduced to the bare id Google accepts', () => {
+  const bare = '939649378904-hu8sk26ridth743takavbp7j66bmc74m.apps.googleusercontent.com';
+  assert.equal(antigravity.sanitizeClientId(bare), bare);
+  assert.equal(antigravity.sanitizeClientId(`https://${bare}`), bare);
+  assert.equal(antigravity.sanitizeClientId(`"https://${bare}/"`), bare);
+  assert.equal(antigravity.sanitizeClientId(`  ${bare}  `), bare);
+  assert.equal(antigravity.sanitizeClientId(''), '');
+});
+
 test('session id is a signed int64 decimal, matching the IDE wire format', () => {
   const id = antigravity.numericSessionId();
   assert.match(id, /^-\d+$/);
