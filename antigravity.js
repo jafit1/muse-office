@@ -1,11 +1,34 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const TOKEN_FILE = path.join(DATA_DIR, 'antigravity.json');
+const CONFIGURED_DATA_DIR = (process.env.DATA_DIR || '').trim();
+
+// A container can boot with a volume path that does not exist yet, or with a
+// read-only root where mkdir fails. The first writable candidate wins and the
+// resolved path is reported by /health instead of guessing at login time.
+let resolvedDataDir = null;
+function writable(dir) {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const probe = path.join(dir, '.write-probe');
+    fs.writeFileSync(probe, 'ok');
+    fs.unlinkSync(probe);
+    return true;
+  } catch { return false; }
+}
+function dataDir() {
+  if (resolvedDataDir) return resolvedDataDir;
+  const candidates = [CONFIGURED_DATA_DIR, path.join(__dirname, 'data'), path.join(os.tmpdir(), 'gembul-agent')].filter(Boolean);
+  resolvedDataDir = candidates.find(writable) || path.join(__dirname, 'data');
+  return resolvedDataDir;
+}
+function tokenFile() {
+  return path.join(dataDir(), 'antigravity.json');
+}
 const PUBLIC_CALLBACK_URL = (process.env.ANTIGRAVITY_CALLBACK_URL || '').replace(/\/$/, '');
 // A client id copied out of a rendered link arrives as a full URL; Google only
 // accepts the bare id, so the scheme and anything after it are stripped here.
@@ -36,15 +59,15 @@ let pending = new Map();
 let refreshPromise = null;
 function readState() {
   if (state) return state;
-  try { state = JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8')); } catch { state = null; }
+  try { state = JSON.parse(fs.readFileSync(tokenFile(), 'utf8')); } catch { state = null; }
   // A stored session from an account that is no longer allowed is not a session.
   if (state && !emailAllowed(state.email)) {
     state = null;
-    try { fs.unlinkSync(TOKEN_FILE); } catch {}
+    try { fs.unlinkSync(tokenFile()); } catch {}
   }
   return state;
 }
-function saveState(next) { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(TOKEN_FILE, JSON.stringify(next, null, 2), { mode: 0o600 }); state = next; }
+function saveState(next) { const dir = dataDir(); fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, 'antigravity.json'), JSON.stringify(next, null, 2), { mode: 0o600 }); state = next; }
 function redirectUri(req) {
   if (PUBLIC_CALLBACK_URL) return PUBLIC_CALLBACK_URL;
   const proto = req.get('x-forwarded-proto')?.split(',')[0]?.trim() || req.protocol;
@@ -65,7 +88,7 @@ async function refresh(current) {
     saveState(next);
     return next;
   } catch (error) {
-    if (error.message?.includes('invalid_grant')) { state = null; try { fs.unlinkSync(TOKEN_FILE); } catch {} }
+    if (error.message?.includes('invalid_grant')) { state = null; try { fs.unlinkSync(tokenFile()); } catch {} }
     throw error;
   }
 }
@@ -239,6 +262,8 @@ function status() {
     connected: !!s?.accessToken,
     needsRefresh: !!s && s.expiresAt <= Date.now() + 300000,
     email: s?.email || '',
+    dataDir: dataDir(),
+    dataDirFallback: !!CONFIGURED_DATA_DIR && dataDir() !== CONFIGURED_DATA_DIR,
     emailAllowed: emailAllowed(s?.email),
     allowlistSize: ALLOWED_EMAILS.length,
     projectIdSet: !!s?.projectId,
