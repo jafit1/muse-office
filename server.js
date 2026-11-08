@@ -123,8 +123,11 @@ app.get('/api/auth/antigravity/callback', async (req, res) => {
     if (req.query.error) return res.status(400).send(`Login Antigravity gagal: ${req.query.error_description || req.query.error}`);
     await antigravity.connectCode(req.query.code, req);
     res.redirect('/?antigravity=connected');
-  } catch (error) { res.status(502).send(`Koneksi Antigravity gagal: ${error.message}`); }
-});
+    // A rejected account is a normal outcome, not a broken pipe.
+  } catch (error) {
+    if (error.status === 403) return res.redirect('/?antigravity=denied');
+    res.status(502).send(`Koneksi Antigravity gagal: ${error.message}`);
+  }});
 
 app.get('/api/antigravity/status', (req, res) => res.json(antigravity.status()));
 app.get('/health', (req, res) => res.json({ status: 'ok', uptime: Math.round(process.uptime()), ...antigravity.status() }));

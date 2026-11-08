@@ -41,6 +41,21 @@ Langkah di Google Cloud Console:
 
 `DATA_DIR` harus volume persisten; kalau tidak, login hilang setiap redeploy dan harus authorize ulang. Set `ANTIGRAVITY_CALLBACK_URL` eksplisit supaya callback tidak pernah dibangun dari host internal proxy.
 
+### Membatasi akun yang boleh login
+
+Dua lapis, dan keduanya perlu dipahami bedanya:
+
+1. **Consent screen → Audience → Test users.** Hanya berlaku selama app berstatus **Testing**. Akun di luar daftar ditolak Google dengan `access_denied`. Batasannya: refresh token hanya hidup 7 hari, jadi sesi mati dan harus login ulang tiap minggu.
+2. **`ANTIGRAVITY_ALLOWED_EMAILS`.** Gate milik app, jalan di kode, bukan di Google. Isi dengan email yang diizinkan, pisahkan koma:
+   ```
+   ANTIGRAVITY_ALLOWED_EMAILS=aku@gmail.com
+   ```
+   Kosong berarti siapa pun yang menyelesaikan consent diterima. Kalau diisi, akun lain yang menekan LOGIN GOOGLE tetap bisa menyelesaikan consent di sisi Google, lalu ditolak di callback: diarahkan balik ke app dengan pesan "akun itu tidak diizinkan", dan tidak ada token yang disimpan.
+
+Saran: **Publish app** (Audience → Publish app) supaya refresh token tidak mati tiap 7 hari, lalu pakai `ANTIGRAVITY_ALLOWED_EMAILS` sebagai pembatas akun. Kalau app sudah terlanjur berisi sesi dari akun yang tidak ada di daftar, sesi itu otomatis dibuang saat service start dan `antigravity.json` dihapus.
+
+Status `GET /health` menampilkan `email`, `emailAllowed`, dan `allowlistSize` untuk memastikan gate-nya benar-benar aktif.
+
 Model: id ramah diperluas otomatis (`gemini-3.8-flash` → `gemini-3.8-flash-medium(medium)`), dan string preset upstream diterima apa adanya, mis. `gemini-3.8-flash-high(high)`.
 
 ## Pemakaian

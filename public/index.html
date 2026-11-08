@@ -563,6 +563,7 @@
     const authStatus = document.getElementById('authStatus');
     const authButton = document.getElementById('authButton');
     function paintAuth(s) {
+      authStatus.style.color = '';
       if (s.connected) {
         authStatus.textContent = `Antigravity: ${s.email || 'connected'}`;
         authButton.textContent = 'CONNECTED';
@@ -584,10 +585,15 @@
         .catch(() => { authStatus.textContent = 'Antigravity: offline'; });
     }
 
-    refreshAuth();
-    if (new URLSearchParams(location.search).has('antigravity')) {
-      history.replaceState({}, '', location.pathname);
-    }
+    const authOutcome = new URLSearchParams(location.search).get('antigravity');
+    if (authOutcome) history.replaceState({}, '', location.pathname);
+    refreshAuth().then(() => {
+      // Applied after the status fetch, otherwise paintAuth overwrites it.
+      if (authOutcome === 'denied') {
+        authStatus.textContent = 'Antigravity: akun itu tidak diizinkan';
+        authStatus.style.color = '#f87171';
+      }
+    });
 
     let state = {
       agents: [

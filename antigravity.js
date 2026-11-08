@@ -18,11 +18,27 @@ const API_BASES = (process.env.ANTIGRAVITY_BASE_URLS || 'https://daily-cloudcode
 const USER_AGENT = 'antigravity/hub/2.24.0 darwin/arm64';
 const METADATA = { ideType: 9, platform: 1, pluginType: 2 };
 const SCOPES = ['https://www.googleapis.com/auth/cloud-platform', 'https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile', 'https://www.googleapis.com/auth/cclog', 'https://www.googleapis.com/auth/experimentsandconfigs'];
+// Google cannot restrict who may authorize a published OAuth client, so the
+// account gate lives here: an empty list means "any account that finishes consent".
+const ALLOWED_EMAILS = (process.env.ANTIGRAVITY_ALLOWED_EMAILS || '').split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
+
+function emailAllowed(email) {
+  return ALLOWED_EMAILS.length === 0 || ALLOWED_EMAILS.includes((email || '').trim().toLowerCase());
+}
 
 let state = null;
 let pending = new Map();
 let refreshPromise = null;
-function readState() { if (state) return state; try { state = JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8')); } catch { state = null; } return state; }
+function readState() {
+  if (state) return state;
+  try { state = JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8')); } catch { state = null; }
+  // A stored session from an account that is no longer allowed is not a session.
+  if (state && !emailAllowed(state.email)) {
+    state = null;
+    try { fs.unlinkSync(TOKEN_FILE); } catch {}
+  }
+  return state;
+}
 function saveState(next) { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(TOKEN_FILE, JSON.stringify(next, null, 2), { mode: 0o600 }); state = next; }
 function redirectUri(req) {
   if (PUBLIC_CALLBACK_URL) return PUBLIC_CALLBACK_URL;
@@ -93,6 +109,9 @@ async function connectCode(code, req) {
   if (!tokens.refresh_token && !readState()?.refreshToken) throw new Error('Google tidak mengembalikan refresh token. Login ulang dengan consent penuh.');
   const headers = { Authorization: `Bearer ${tokens.access_token}`, 'Content-Type': 'application/json', 'User-Agent': USER_AGENT, 'x-request-source': 'local' };
   const info = await jsonFetch(`${USERINFO_URL}?alt=json`, { headers });
+  if (!emailAllowed(info.email)) {
+    throw Object.assign(new Error(`Akun ${info.email || '(tanpa email)'} tidak ada di ANTIGRAVITY_ALLOWED_EMAILS.`), { status: 403 });
+  }
   const assist = await jsonFetch(CODE_ASSIST_URL, { method: 'POST', headers, body: JSON.stringify({ metadata: METADATA }) }).catch(() => ({}));
   const tier = assist.allowedTiers?.find(t => t.isDefault)?.id || 'legacy-tier';
   const { projectId } = await loadProject(headers, tier, assist);
@@ -177,6 +196,8 @@ function status() {
     connected: !!s?.accessToken,
     needsRefresh: !!s && s.expiresAt <= Date.now() + 300000,
     email: s?.email || '',
+    emailAllowed: emailAllowed(s?.email),
+    allowlistSize: ALLOWED_EMAILS.length,
     projectIdSet: !!s?.projectId,
     model: resolveModel(),
     callbackConfigured: !!PUBLIC_CALLBACK_URL,
