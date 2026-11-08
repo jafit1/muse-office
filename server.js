@@ -83,6 +83,7 @@ async function runOfficeTask(taskPrompt) {
     );
     updateAgentStatus(pm.id, 'talking', 'Delegating to Dev...');
     logOffice(pm.name, dev.name, pmInstructions);
+    updateAgentStatus(pm.id, 'idle', '');
 
     // Step 2: Dev executes
     updateAgentStatus(dev.id, 'thinking', 'Implementing solution...');
@@ -93,6 +94,7 @@ async function runOfficeTask(taskPrompt) {
     );
     updateAgentStatus(dev.id, 'talking', 'Handing off to QA...');
     logOffice(dev.name, qa.name, devResult);
+    updateAgentStatus(dev.id, 'idle', '');
 
     // Step 3: QA audits
     updateAgentStatus(qa.id, 'thinking', 'Auditing deliverable...');

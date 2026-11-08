@@ -50,6 +50,8 @@ Model: id ramah diperluas otomatis (`gemini-3.8-flash` → `gemini-3.8-flash-med
 3. Tulis tujuan di **Mission Dispatch**, tekan **DISPATCH**. Satu tugas diproses pada satu waktu (`409` kalau masih berjalan), dan ditolak dengan `401` kalau belum login.
 4. Feed **Inter-Agent Protocol Bus** menampilkan serah-terima Gembul → Bulu → Kecil.
 
+Mau lihat animasinya tanpa login? Tambahkan `?demo=1` di URL. Satu siklus kerja diputar ulang di browser saja (badge **DEMO** menyala, server tidak dipanggil, tidak ada task yang benar-benar jalan).
+
 Endpoint bantu: `GET /health` (uptime + status koneksi, tanpa token), `GET /api/antigravity/status`, `GET /api/state`.
 
 ## Profil resource
