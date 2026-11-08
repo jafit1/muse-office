@@ -1,16 +1,37 @@
-# Gembul Agent
+# Gembul Agent — VibeOffice Architecture
 
-Kantor virtual 2D ringan untuk tiga agen yang bekerja berantai:
+Kantor virtual retro pixel-art 16-bit (mengadopsi arsitektur [vibeoffice](https://github.com/acost1a/vibeoffice)) di mana agen AI Anda hidup, mengetik, berdiskusi, dan bekerja secara realtime di atas mesin **Google Antigravity (Gemini 3.8 Flash)**.
 
-| Agen | Peran | Tugas |
-| --- | --- | --- |
-| **Gembul** | Project Manager | memecah tujuan jadi spesifikasi kerja |
-| **Bulu** | Developer | mengeksekusi spesifikasi jadi hasil teknis |
-| **Kecil** | Reviewer / QA | mengaudit hasil dan memberi verdict |
+| Agen | Peran | Avatar | Tugas |
+| --- | --- | --- | --- |
+| **Gembul** | Project Manager & Architect | 👔 `#4A90E2` (Biru) | Scoping, arsitektur, perencanaan & direct chat |
+| **Bulu** | Lead Developer | 💻 `#10B981` (Hijau) | Menulis kode bersih, algoritma, refactor & debugging |
+| **Kecil** | QA & Security Auditor | 🔍 `#F5A623` (Kuning) | Audit keamanan, race condition, edge cases & approval |
 
-Semua inferensi lewat **sesi login Google Antigravity** (OAuth), bukan API key. Avatar di canvas berjalan mengikuti fase kerja riil: diam di meja saat `idle`, menunduk ke layar saat `thinking`, berjalan ke jalur serah-terima saat `talking`, lalu kembali ke meja.
+Plus tombol **➕ HIRE AGENT** untuk mempekerjakan spesialis baru (Coder, Excel Master, Word Master, PPT Master, Researcher) langsung ke kantor!
 
-## Alur OAuth Antigravity
+## Fitur & Kehidupan Kantor
+
+- **Retro 16-bit Pixel-Art Office:** Lantai kayu dengan ubin, jendela dengan langit dan cahaya matahari, rak buku, jam dinding, papan tulis rapat, tanaman hias, rak server, akuarium berisi ikan, dispenser air, dan mesin kopi dengan uap panas.
+- **Micro-Animations Realtime:**
+  - Saat agen mengetik kode (`editing`): avatar mengetik cepat di keyboard, monitor menyala hijau/amber!
+  - Saat agen membaca file / audit (`reading`): lembaran kertas dibolak-balik di atas meja.
+  - Saat agen menganalisis (`thinking`): gelembung 💭 melayang di atas kepala.
+  - Saat menunggu (`waiting`): berjalan ke mesin kopi ☕.
+  - Saat santai/idle: kucing berjalan-jalan di kantor, robot vacuum menyapu lantai, agen rebahan tidur di sofa lounge 💤.
+  - Saat deliverable selesai: konfeti warna-warni berhamburan di kantor 🎉!
+- **Interactive Rail & Direct Chat:**
+  - Klik agen mana saja (Gembul, Bulu, Kecil, atau hired agent) untuk membuka detail profil dan **chat interaktif 1-on-1 langsung di mejanya**.
+  - Format percakapan mendukung Markdown, blok kode dengan tema gelap, dan tombol **Salin (Copy)** instan.
+- **Smart Auto-Relay vs Direct:**
+  - Jika kirim pesan ke Gembul (misal `"hi"`, `"kamu siapa"`): Gembul membalas ramah dan singkat secara langsung tanpa melibatkan agen lain.
+  - Jika kirim tugas koding ke Gembul: Gembul merancang spesifikasi ➔ mendelegasikan ke Bulu (nulis kode) ➔ diaudit Kecil (QA) ➔ konfeti merayakan hasil kerja!
+  - Jika klik Bulu langsung: Bulu langsung menjawab dan menulis kodingan.
+  - Jika klik Kecil langsung: Kecil langsung memberikan hasil review dan audit.
+- **Pelacakan Token & Biaya Realtime:**
+  - Menghitung token input/output dan estimasi biaya USD secara realtime di bar atas (`👥 agents`, `🔤 tokens`, `💰 cost today`).
+
+## Alur OAuth & Token Antigravity
 
 1. `GET /api/auth/antigravity/start` → redirect ke Google (`cloud-platform`, `userinfo.email`, `userinfo.profile`, `cclog`, `experimentsandconfigs`, `access_type=offline`, `prompt=consent`).
 2. `GET /api/auth/antigravity/callback` → tukar `code` jadi token, ambil `project_id` dari `v1internal:loadCodeAssist`, jalankan `onboardUser` bila project belum ada.

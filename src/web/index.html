@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12100d">
+  <title>Gembul Agent — VibeOffice</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏢</text></svg>">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header id="topbar">
+    <span class="logo"><img id="logo-img" width="22" alt=""> GEMBUL AGENT</span>
+    <span id="totals"></span>
+    <div id="auth-area" style="display:flex;align-items:center;gap:12px;margin-left:auto;margin-right:16px;font-size:11px">
+      <span id="authStatus" style="color:var(--dim)">Antigravity: checking...</span>
+      <a id="authButton" href="/api/auth/antigravity/start" class="auth-btn">LOGIN GOOGLE</a>
+      <a href="/privacy" target="_blank" style="color:var(--dim);text-decoration:none">Privacy</a>
+      <a href="/terms" target="_blank" style="color:var(--dim);text-decoration:none">Terms</a>
+    </div>
+  </header>
+  <main>
+    <div id="scene">
+      <div id="conn"><span>⚠</span><span class="blink">RECONNECTING…</span></div>
+      <div id="toasts"></div>
+    </div>
+    <aside id="rail">
+      <div id="detail" hidden></div>
+      <div id="list-view">
+        <h2>Agents</h2>
+        <ul id="agents"></ul>
+        <h2>Events</h2>
+        <ul id="feed"></ul>
+      </div>
+    </aside>
+  </main>
+  <dialog id="hire-modal">
+    <form id="hire-form">
+      <h3>HIRE AN AGENT</h3>
+      <div id="role-grid"></div>
+      <label class="field-label">Mode</label>
+      <div id="mode-row">
+        <button type="button" class="mode selected" data-mode="chat">💬 Chat first<small>discuss, then work</small></button>
+        <button type="button" class="mode" data-mode="approve">🤝 Approve<small>asks before risky tools</small></button>
+        <button type="button" class="mode" data-mode="auto">⚡ Auto<small>full send, no questions</small></button>
+      </div>
+      <label class="field-label">Model</label>
+      <div id="model-row">
+        <button type="button" class="mode selected" data-model="gemini-3.8-flash">⚡ Gemini 3.8 Flash<small>fast &amp; smart</small></button>
+        <button type="button" class="mode" data-model="gemini-3.8-flash-high">🧠 Flash High<small>deep reasoning</small></button>
+        <button type="button" class="mode" data-model="gemini-4-argon">🚀 Argon 4<small>preview</small></button>
+      </div>
+      <textarea id="hire-task" rows="3" placeholder="What should they do? e.g. Tulis fungsi validasi form di TypeScript" required></textarea>
+      <label class="field-label">Working folder <span>— files are created here</span></label>
+      <input id="hire-cwd" list="cwd-list" spellcheck="false" autocomplete="off" placeholder="~/Desktop/gembul-work">
+      <datalist id="cwd-list"></datalist>
+      <menu>
+        <button type="button" id="hire-cancel">CANCEL</button>
+        <button type="submit" id="hire-submit">HIRE ➜</button>
+      </menu>
+    </form>
+  </dialog>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
