@@ -49,6 +49,9 @@ const SCOPES = ['https://www.googleapis.com/auth/cloud-platform', 'https://www.g
 // Google cannot restrict who may authorize a published OAuth client, so the
 // account gate lives here: an empty list means "any account that finishes consent".
 const ALLOWED_EMAILS = (process.env.ANTIGRAVITY_ALLOWED_EMAILS || '').split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
+// A refresh token issued elsewhere can be handed to the service directly. It is
+// the only way to use a client whose redirect URI we are not allowed to add.
+const IMPORTED_REFRESH_TOKEN = (process.env.ANTIGRAVITY_REFRESH_TOKEN || '').trim();
 
 function emailAllowed(email) {
   return ALLOWED_EMAILS.length === 0 || ALLOWED_EMAILS.includes((email || '').trim().toLowerCase());
@@ -60,6 +63,11 @@ let refreshPromise = null;
 function readState() {
   if (state) return state;
   try { state = JSON.parse(fs.readFileSync(tokenFile(), 'utf8')); } catch { state = null; }
+  // No stored session yet: adopt the hand-delivered refresh token, if any.
+  if (!state && IMPORTED_REFRESH_TOKEN) {
+    state = { accessToken: '', refreshToken: IMPORTED_REFRESH_TOKEN, expiresAt: 0, projectId: '', projectSynthetic: false, email: '', imported: true };
+    return state;
+  }
   // A stored session from an account that is no longer allowed is not a session.
   if (state && !emailAllowed(state.email)) {
     state = null;
@@ -84,7 +92,19 @@ async function refresh(current) {
   if (!current?.refreshToken) return null;
   try {
     const tokens = await jsonFetch(TOKEN_URL, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: current.refreshToken, client_id: CLIENT_ID, client_secret: CLIENT_SECRET }) });
-    const next = { ...current, accessToken: tokens.access_token, refreshToken: tokens.refresh_token || current.refreshToken, expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000 };
+    // An imported token arrives without an email, so the account behind it is
+    // only known after the first refresh. Check the allowlist right there.
+    let email = current.email || '';
+    if (!email) {
+      try {
+        const info = await jsonFetch(`${USERINFO_URL}?alt=json`, { headers: { Authorization: `Bearer ${tokens.access_token}` } });
+        email = info.email || '';
+      } catch {}
+      if (email && !emailAllowed(email)) {
+        throw Object.assign(new Error(`Akun ${email} tidak ada di ANTIGRAVITY_ALLOWED_EMAILS.`), { status: 403 });
+      }
+    }
+    const next = { ...current, email, accessToken: tokens.access_token, refreshToken: tokens.refresh_token || current.refreshToken, expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000 };
     saveState(next);
     return next;
   } catch (error) {
@@ -259,7 +279,7 @@ async function generate(agent, prompt) {
 function status() {
   const s = readState();
   return {
-    connected: !!s?.accessToken,
+    connected: !!(s?.accessToken || s?.refreshToken),
     needsRefresh: !!s && s.expiresAt <= Date.now() + 300000,
     email: s?.email || '',
     dataDir: dataDir(),

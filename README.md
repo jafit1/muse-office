@@ -56,6 +56,16 @@ Saran: **Publish app** (Audience → Publish app) supaya refresh token tidak mat
 
 Status `GET /health` menampilkan `email`, `emailAllowed`, dan `allowlistSize` untuk memastikan gate-nya benar-benar aktif.
 
+### Login lewat token, tanpa callback
+
+Kalau OAuth client-nya tidak bisa didaftarkan untuk domain ini, mint token di komputer sendiri:
+
+```
+node login-local.js
+```
+
+Skrip membuka consent screen di browser, menangkap callback di `http://localhost:53682`, lalu mencetak refresh token. Tempel hasilnya ke env `ANTIGRAVITY_REFRESH_TOKEN`; service memakainya untuk menukar access token seperti biasa. Tombol LOGIN GOOGLE tidak dipakai lagi dalam mode ini.
+
 Model: id ramah diperluas otomatis (`gemini-3.8-flash` → `gemini-3.8-flash-medium(medium)`), dan string preset upstream diterima apa adanya, mis. `gemini-3.8-flash-high(high)`.
 
 ## Pemakaian
