@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — Gembul Agent</title>
+<style>
+  :root {
+    --bg: #0b0f17;
+    --panel: #111826;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --line: #1f2b3d;
+    --accent: #818cf8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 64px 24px 96px;
+    background: var(--bg);
+    color: var(--text);
+    font: 400 15px/1.7 "Plus Jakarta Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 680px; margin: 0 auto; }
+  .kicker {
+    font: 600 11px/1 "JetBrains Mono", Consolas, monospace;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  h1 { margin: 10px 0 6px; font-size: 30px; line-height: 1.25; letter-spacing: -0.02em; }
+  .updated { margin: 0 0 36px; color: var(--muted); font-size: 13px; }
+  h2 {
+    margin: 36px 0 10px;
+    font-size: 16px;
+    letter-spacing: 0.01em;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  p { margin: 0 0 14px; }
+  ul { margin: 0 0 14px; padding-left: 20px; }
+  li { margin-bottom: 6px; }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(129, 140, 248, 0.35); }
+  a:hover { border-bottom-color: var(--accent); }
+  code {
+    font: 500 13px/1.5 "JetBrains Mono", Consolas, monospace;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+  footer {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="kicker">Gembul Agent</div>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated 8 November 2026</p>
+
+  <p>Gembul Agent is a self-hosted office dashboard that runs agent tasks on the owner's own Google account. This page explains exactly what the service stores and what it does with it. There is one user: the person who deployed it.</p>
+
+  <h2>What the service stores</h2>
+  <ul>
+    <li>The email address of the Google account that signed in. It is shown in the interface so you can confirm which account is active.</li>
+    <li>An OAuth access token and refresh token issued by Google for that account.</li>
+    <li>The Cloud Code project identifier that Google returns for that account.</li>
+    <li>Task prompts you type into the dispatch box, and the agent replies, held in memory to render the activity feed.</li>
+  </ul>
+  <p>All of it lives in a single file, <code>antigravity.json</code>, on the server's own disk. Nothing is written to a database, and nothing leaves the server except the API calls described below.</p>
+
+  <h2>Why it is stored</h2>
+  <p>The refresh token is kept so the service can continue calling Google's Gemini models on your behalf without asking you to sign in again after every restart. The email is kept only to display the active account and to enforce the account allowlist.</p>
+
+  <h2>What the tokens are used for</h2>
+  <p>Each task you dispatch is sent to Google's Cloud Code endpoints to generate the project manager, developer and reviewer responses. Tokens are not used for any other purpose. They are never sent to an analytics provider, an advertising network, or any third party.</p>
+
+  <h2>Sharing</h2>
+  <p>No data is sold, shared, or transferred to anyone. The service has no analytics, no tracking pixels, and no third-party scripts. Fonts fall back to system fonts if the external stylesheet is unavailable.</p>
+
+  <h2>Retention and deletion</h2>
+  <ul>
+    <li>Deleting <code>antigravity.json</code> from the persistent volume removes the stored tokens from the server.</li>
+    <li>You can revoke the app's access at any time at <a href="https://myaccount.google.com/permissions" rel="noopener">myaccount.google.com/permissions</a>. The next refresh attempt then fails and the local session is discarded.</li>
+    <li>Task logs live in memory only and disappear when the service restarts.</li>
+  </ul>
+
+  <h2>Security</h2>
+  <p>The token file is written with owner-only permissions. The OAuth client secret is supplied through the host's environment variables and is not part of the public repository. Traffic runs over HTTPS on the deployed host.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about this policy: <a href="mailto:maxluno47@gmail.com">maxluno47@gmail.com</a>.</p>
+
+  <footer>
+    <a href="/">Back to the office</a> · <a href="/terms">Terms of Service</a>
+  </footer>
+</main>
+</body>
+</html>

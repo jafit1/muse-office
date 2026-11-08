@@ -130,6 +130,9 @@ app.get('/api/auth/antigravity/callback', async (req, res) => {
   }});
 
 app.get('/api/antigravity/status', (req, res) => res.json(antigravity.status()));
+// Google's consent screen asks for these two, so they ship with the app.
+app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy.html')));
+app.get('/terms', (req, res) => res.sendFile(path.join(__dirname, 'public', 'terms.html')));
 app.get('/health', (req, res) => res.json({ status: 'ok', uptime: Math.round(process.uptime()), ...antigravity.status() }));
 
 let activeTask = false;
