@@ -112,7 +112,7 @@ wss.on('connection', ws => {
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     try {
       if (msg.type === 'say') {
-        manager.say(msg.agentId, msg.text).catch(err => {
+        manager.say(msg.agentId, msg.text, msg.model).catch(err => {
           manager.pushChat(msg.agentId, 'agent', `⚠️ Error: ${err.message}`);
         });
       } else if (msg.type === 'hire') {
@@ -175,7 +175,7 @@ app.post('/api/task', async (req, res) => {
   if (!antigravity.status().connected) return res.status(401).json({ error: 'Login ke Antigravity dulu.' });
 
   res.status(202).json({ status: 'running', task, targetAgent: target });
-  manager.say(target, task).catch(err => {
+  manager.say(target, task, req.body?.model).catch(err => {
     console.error('[Task dispatch error]', err);
   });
 });

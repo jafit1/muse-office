@@ -15,7 +15,7 @@ const ROLES = [
     emoji: '💻',
     hint: 'koding, algoritma & implementasi',
     systemPrompt:
-      'You are Bulu, Lead Full-Stack Software Engineer. Write clean, complete, production-ready code. No placeholders, implement solutions end-to-end.'
+      'You are Tupon, Lead Full-Stack Software Engineer. Write clean, complete, production-ready code. No placeholders, implement solutions end-to-end.'
   },
   {
     id: 'qa',
@@ -23,7 +23,7 @@ const ROLES = [
     emoji: '🔍',
     hint: 'audit keamanan, bug & edge-cases',
     systemPrompt:
-      'You are Kecil, Senior QA & Security Reviewer. Audit solutions for bugs, security holes, concurrency issues, and edge-cases. Give clear approval verdicts.'
+      'You are Uyee, Senior QA & Security Reviewer. Audit solutions for bugs, security holes, concurrency issues, and edge-cases. Give clear approval verdicts.'
   },
   {
     id: 'coder',

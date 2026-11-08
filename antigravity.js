@@ -302,11 +302,12 @@ function numericSessionId() {
   return `-${n}`;
 }
 
-async function generate(agent, prompt) {
+async function generate(agent, prompt, modelOverride) {
   const id = safeAgentId(agent);
   let creds = await ensureToken(id);
   creds = await ensureProject(creds, id);
-  const model = resolveModel();
+  const targetModel = modelOverride || (typeof agent === 'object' ? agent?.model : null);
+  const model = resolveModel(targetModel);
   const callBody = creds => JSON.stringify({
     project: creds.projectId,
     model,

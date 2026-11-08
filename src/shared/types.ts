@@ -54,7 +54,14 @@ export interface PermissionRequest {
 export type HireMode = 'chat' | 'approve' | 'auto';
 
 /** Models offered in the hire modal. Values are exact Claude model IDs passed to the Agent SDK. */
-export type HireModel = 'gemini-3.8-flash' | 'gemini-3.8-flash-high' | 'gemini-4-argon' | 'claude-sonnet-5' | 'claude-opus-4-8';
+export type HireModel =
+  | 'gemini-3.8-flash'
+  | 'gemini-3.8-flash-high'
+  | 'gemini-4-argon'
+  | 'claude-sonnet-5'
+  | 'claude-opus-5'
+  | 'gemini-2.5-pro'
+  | 'gemini-3-flash';
 
 export interface ChatMsg {
   ts: number;
@@ -86,6 +93,6 @@ export type ServerMessage =
 
 export type ClientMessage =
   | { type: 'hire'; roleId: string; task: string; cwd: string; mode: HireMode; model?: HireModel }
-  | { type: 'say'; agentId: string; text: string }
+  | { type: 'say'; agentId: string; text: string; model?: string }
   | { type: 'stop'; agentId: string }
   | { type: 'permission'; agentId: string; requestId: string; allow: boolean };

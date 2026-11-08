@@ -413,8 +413,8 @@ export const pizzaTexture = () => toTexture(PIZZA, 'pizza');
 const SHIRTS = ['#c96a4a', '#4a6a9a', '#7aa05a', '#9a5aa0', '#b8860b', '#4a9a8a', '#d98a6a', '#6a8ab9'];
 export function shirtFor(agentId: string): string {
   if (agentId.includes('pm') || agentId.includes('gembul')) return '#4A90E2';
-  if (agentId.includes('dev') || agentId.includes('bulu')) return '#10B981';
-  if (agentId.includes('qa') || agentId.includes('kecil')) return '#F5A623';
+  if (agentId.includes('dev') || agentId.includes('tupon') || agentId.includes('bulu')) return '#10B981';
+  if (agentId.includes('qa') || agentId.includes('uyee') || agentId.includes('kecil')) return '#F5A623';
   let h = 0;
   for (const c of agentId) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return SHIRTS[h % SHIRTS.length];

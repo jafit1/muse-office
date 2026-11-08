@@ -13,8 +13,9 @@ const totalTokens = (a: AgentSnapshot) => a.tokens.input + a.tokens.output + a.t
 
 function modelChip(model?: string): string {
   if (!model) return '';
-  const fam = ['opus', 'sonnet', 'haiku', 'fable'].find((f) => model.includes(f)) ?? 'other';
-  const short = model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
+  const fam = ['opus', 'sonnet', 'argon', 'pro', 'flash', 'haiku', 'fable'].find((f) => model.includes(f)) ?? 'other';
+  let short = model.replace(/^claude-/, '').replace(/^gemini-/, '').replace(/-\d{8}$/, '').replace(/-medium$/, '').replace(/-high$/, ' (hi)');
+  if (short.includes('5-5')) short = short.replace('-5-5', '-5');
   return `<span class="model ${fam}">${esc(short)}</span>`;
 }
 
@@ -93,10 +94,24 @@ function renderDetail(el: HTMLElement, a: AgentSnapshot, store: OfficeStore, onS
     <div class="chatlog" id="chatlog">${chat.length === 0
       ? '<div class="chat-empty">no messages yet</div>'
       : chat.map((m) => `<div class="msg ${m.who}">${formatChat(m.text)}</div>`).join('')}</div>
-    <div class="chat">
-      <input id="chat-input" placeholder="Tell them something…" autocomplete="off">
-      <button id="chat-send" title="Send">➤</button>
-      <button id="agent-stop" title="Stop and dismiss this agent">🛑</button>
+    <div class="chat-controls">
+      <div class="model-picker-row">
+        <label class="model-label" for="agent-model-select">MODEL:</label>
+        <select id="agent-model-select" class="model-select">
+          <option value="gemini-3.8-flash-medium" ${(!a.model || a.model.includes('3.8-flash-medium') || a.model === 'gemini-3.8-flash') ? 'selected' : ''}>⚡ Gemini 3.8 Flash (Default)</option>
+          <option value="gemini-3.8-flash-high" ${(a.model === 'gemini-3.8-flash-high') ? 'selected' : ''}>🧠 Gemini 3.8 Flash (High)</option>
+          <option value="gemini-4-argon-medium" ${(a.model?.includes('argon')) ? 'selected' : ''}>🚀 Gemini 4 Argon</option>
+          <option value="claude-sonnet-5-5-medium" ${(a.model?.includes('sonnet')) ? 'selected' : ''}>⚖️ Claude Sonnet 5</option>
+          <option value="claude-opus-5-5-medium" ${(a.model?.includes('opus')) ? 'selected' : ''}>👑 Claude Opus 5</option>
+          <option value="gemini-3-flash" ${(a.model === 'gemini-3-flash') ? 'selected' : ''}>⚡ Gemini 3 Flash</option>
+          <option value="gemini-2.5-pro" ${(a.model === 'gemini-2.5-pro') ? 'selected' : ''}>🎯 Gemini 2.5 Pro</option>
+        </select>
+      </div>
+      <div class="chat">
+        <input id="chat-input" placeholder="Perintahkan ${esc(a.label)}..." autocomplete="off">
+        <button id="chat-send" title="Send">➤</button>
+        <button id="agent-stop" title="Stop and dismiss this agent">🛑</button>
+      </div>
     </div>` : ''}
     <dl>
       <dt>status</dt><dd>${STATUS_LABEL[a.status]}</dd>
@@ -121,11 +136,19 @@ function renderDetail(el: HTMLElement, a: AgentSnapshot, store: OfficeStore, onS
     const submit = () => {
       const text = input.value.trim();
       if (!text) return;
-      send({ type: 'say', agentId: a.agentId, text });
+      const modelSelect = el.querySelector('#agent-model-select') as HTMLSelectElement | null;
+      const model = modelSelect ? modelSelect.value : undefined;
+      send({ type: 'say', agentId: a.agentId, text, model });
       input.value = '';
     };
     el.querySelector('#chat-send')!.addEventListener('click', submit);
     input.addEventListener('keydown', (e) => { if ((e as KeyboardEvent).key === 'Enter') submit(); });
+    const modelSelect = el.querySelector('#agent-model-select') as HTMLSelectElement | null;
+    modelSelect?.addEventListener('change', () => {
+      a.model = modelSelect.value;
+      const metaEl = el.querySelector('.meta');
+      if (metaEl) metaEl.innerHTML = `${modelChip(a.model)} ${a.controllable ? '' : '<span class="sub-tag">👁 observed session — read-only</span>'}`;
+    });
     el.querySelector('#agent-stop')!.addEventListener('click', () => {
       send({ type: 'stop', agentId: a.agentId });
       onSelect(undefined);

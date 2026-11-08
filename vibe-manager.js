@@ -24,8 +24,8 @@ class SessionManager {
   initCoreTeam() {
     const core = [
       { id: 'agent_pm', label: 'Gembul', roleEmoji: '👔', roleId: 'pm', projectDir: 'gembul/office', shirt: '#4A90E2' },
-      { id: 'agent_dev', label: 'Bulu', roleEmoji: '💻', roleId: 'dev', projectDir: 'gembul/engineering', shirt: '#10B981' },
-      { id: 'agent_qa', label: 'Kecil', roleEmoji: '🔍', roleId: 'qa', projectDir: 'gembul/quality', shirt: '#F5A623' }
+      { id: 'agent_dev', label: 'Tupon', roleEmoji: '💻', roleId: 'dev', projectDir: 'gembul/engineering', shirt: '#10B981' },
+      { id: 'agent_qa', label: 'Uyee', roleEmoji: '🔍', roleId: 'qa', projectDir: 'gembul/quality', shirt: '#F5A623' }
     ];
 
     for (const a of core) {
@@ -37,6 +37,7 @@ class SessionManager {
         roleEmoji: a.roleEmoji,
         roleId: a.roleId,
         projectDir: a.projectDir,
+        model: 'gemini-3.8-flash',
         controllable: true,
         busy: false
       });
@@ -68,7 +69,7 @@ class SessionManager {
     this.cb.onChat(agentId, msg);
   }
 
-  trackUsage(agentId, inputText, outputText) {
+  trackUsage(agentId, inputText, outputText, model) {
     const input = Math.max(12, Math.round((inputText || '').length / 4));
     const output = Math.max(12, Math.round((outputText || '').length / 4));
     this.cb.onEvent({
@@ -76,12 +77,12 @@ class SessionManager {
       ts: Date.now(),
       sessionId: `session-${agentId}`,
       agentId,
-      model: 'gemini-3.8-flash',
+      model: model || 'gemini-3.8-flash',
       usage: { input, output, cacheRead: 0, cacheWrite: 0 }
     });
   }
 
-  async say(agentId, text) {
+  async say(agentId, text, model) {
     let agent = this.agents.get(agentId);
     if (!agent) {
       agent = this.agents.get('agent_pm');
@@ -89,13 +90,15 @@ class SessionManager {
     }
     if (!agent) return;
 
+    if (model) agent.model = model;
     this.pushChat(agentId, 'you', text);
-    await this.executePrompt(agent, text);
+    await this.executePrompt(agent, text, model);
   }
 
-  async executePrompt(agent, text) {
+  async executePrompt(agent, text, model) {
     const agentId = agent.agentId;
     const sessionId = agent.sessionId;
+    const chosenModel = model || agent.model || 'gemini-3.8-flash';
     agent.busy = true;
 
     try {
@@ -106,7 +109,8 @@ class SessionManager {
         if (isGreeting(text)) {
           const reply = await antigravity.generate(
             agentId,
-            `You are Gembul, Project Manager and Solution Architect of Gembul Agent cluster.\nUser says: "${text}".\nGreet the user warmly, concisely, and helpfully in their language (Indonesian/English). State how you and your team (Bulu the Developer, Kecil the QA Auditor) can help with projects, code, or architecture.`
+            `You are Gembul, Project Manager and Solution Architect of Gembul Agent cluster.\nUser says: "${text}".\nGreet the user warmly, concisely, and helpfully in their language (Indonesian/English). State how you and your team (Tupon the Lead Developer and Uyee the QA & Security Auditor) can help with projects, code, or architecture.`,
+            chosenModel
           );
           this.cb.onEvent({
             kind: 'tool_call',
@@ -119,7 +123,7 @@ class SessionManager {
             detail: 'Menjawab OPERATOR...'
           });
           this.pushChat(agentId, 'agent', reply);
-          this.trackUsage(agentId, text, reply);
+          this.trackUsage(agentId, text, reply, chosenModel);
           this.cb.onEvent({ kind: 'tool_result', ts: Date.now(), sessionId, agentId, toolUseId: '0', isError: false });
           agent.busy = false;
           return;
@@ -129,7 +133,8 @@ class SessionManager {
         if (!isCoding) {
           const reply = await antigravity.generate(
             agentId,
-            `You are Gembul, Project Manager & Solution Architect.\nUser objective: "${text}".\nAnswer directly, clearly, and helpfully in the user's language. Provide clear scoping, architecture, or explanation.`
+            `You are Gembul, Project Manager & Solution Architect.\nUser objective: "${text}".\nAnswer directly, clearly, and helpfully in the user's language. Provide clear scoping, architecture, or explanation.`,
+            chosenModel
           );
           this.cb.onEvent({
             kind: 'tool_call',
@@ -142,13 +147,13 @@ class SessionManager {
             detail: 'Memberikan penjelasan arsitektur...'
           });
           this.pushChat(agentId, 'agent', reply);
-          this.trackUsage(agentId, text, reply);
+          this.trackUsage(agentId, text, reply, chosenModel);
           this.cb.onEvent({ kind: 'tool_result', ts: Date.now(), sessionId, agentId, toolUseId: '0', isError: false });
           agent.busy = false;
           return;
         }
 
-        // Auto-Relay Workflow: Gembul -> Bulu -> Kecil
+        // Auto-Relay Workflow: Gembul -> Tupon -> Uyee
         this.cb.onEvent({
           kind: 'tool_call',
           ts: Date.now(),
@@ -157,15 +162,16 @@ class SessionManager {
           tool: 'task',
           toolName: 'Spesifikasi',
           toolUseId: crypto.randomUUID().slice(0, 8),
-          detail: 'Merancang spesifikasi teknis untuk Bulu...'
+          detail: 'Merancang spesifikasi teknis untuk Tupon...'
         });
         const pmSpecs = await antigravity.generate(
           agentId,
-          `You are Gembul, Project Manager. Objective from user: "${text}".\nCreate clear, concise, actionable technical specifications for Developer (Bulu). Focus on architecture, interfaces, and criteria. No fluff.`
+          `You are Gembul, Project Manager. Objective from user: "${text}".\nCreate clear, concise, actionable technical specifications for Lead Developer (Tupon). Focus on architecture, interfaces, and criteria. No fluff.`,
+          chosenModel
         );
         this.pushChat(agentId, 'agent', `📋 **Spesifikasi & Rencana Arsitektur dari Gembul:**\n\n${pmSpecs}`);
-        this.trackUsage(agentId, text, pmSpecs);
-        this.cb.onNote('agent_pm', '📋', `Gembul mendelegasikan tugas ke Bulu`);
+        this.trackUsage(agentId, text, pmSpecs, chosenModel);
+        this.cb.onNote('agent_pm', '📋', `Gembul mendelegasikan tugas ke Tupon`);
         this.cb.onEvent({ kind: 'tool_result', ts: Date.now(), sessionId, agentId, toolUseId: '0', isError: false });
 
         const dev = this.agents.get('agent_dev');
@@ -180,16 +186,17 @@ class SessionManager {
             tool: 'edit',
             toolName: 'Implementasi',
             toolUseId: crypto.randomUUID().slice(0, 8),
-            detail: 'Bulu menulis kode solusi lengkap...'
+            detail: 'Tupon menulis kode solusi lengkap...'
           });
           const devCode = await antigravity.generate(
             'agent_dev',
-            `You are Bulu, Lead Developer. Implement the technical solution for:\n${pmSpecs}\n\nOriginal goal: "${text}".\nProvide complete, working, production-grade code with concise explanation. No placeholders.`
+            `You are Tupon, Lead Developer. Implement the technical solution for:\n${pmSpecs}\n\nOriginal goal: "${text}".\nProvide complete, working, production-grade code with concise explanation. No placeholders.`,
+            chosenModel
           );
           this.pushChat('agent_dev', 'agent', devCode);
-          this.pushChat('agent_pm', 'agent', `💻 **Solusi Kode dari Bulu (Developer):**\n\n${devCode}`);
-          this.trackUsage('agent_dev', pmSpecs, devCode);
-          this.cb.onNote('agent_dev', '💻', `Bulu menyerahkan kode ke Kecil untuk audit`);
+          this.pushChat('agent_pm', 'agent', `💻 **Solusi Kode dari Tupon (Developer):**\n\n${devCode}`);
+          this.trackUsage('agent_dev', pmSpecs, devCode, chosenModel);
+          this.cb.onNote('agent_dev', '💻', `Tupon menyerahkan kode ke Uyee untuk audit`);
           this.cb.onEvent({ kind: 'tool_result', ts: Date.now(), sessionId: dev.sessionId, agentId: 'agent_dev', toolUseId: '0', isError: false });
           dev.busy = false;
 
@@ -205,16 +212,17 @@ class SessionManager {
               tool: 'read',
               toolName: 'Audit',
               toolUseId: crypto.randomUUID().slice(0, 8),
-              detail: 'Kecil mengaudit keamanan & edge-cases...'
+              detail: 'Uyee mengaudit keamanan & edge-cases...'
             });
             const qaReport = await antigravity.generate(
               'agent_qa',
-              `You are Kecil, Senior QA & Security Reviewer. Review the code deliverable from Bulu against goal: "${text}".\nCode:\n${devCode}\n\nHighlight security, edge-cases, concurrency, and give your final approval verdict.`
+              `You are Uyee, Senior QA & Security Reviewer. Review the code deliverable from Tupon against goal: "${text}".\nCode:\n${devCode}\n\nHighlight security, edge-cases, concurrency, and give your final approval verdict.`,
+              chosenModel
             );
             this.pushChat('agent_qa', 'agent', qaReport);
-            this.pushChat('agent_pm', 'agent', `🔍 **Laporan Audit & Persetujuan Kecil (QA):**\n\n${qaReport}`);
-            this.trackUsage('agent_qa', devCode, qaReport);
-            this.cb.onNote('agent_qa', '🎉', `Kecil menyetujui deliverable! Task selesai.`);
+            this.pushChat('agent_pm', 'agent', `🔍 **Laporan Audit & Persetujuan Uyee (QA):**\n\n${qaReport}`);
+            this.trackUsage('agent_qa', devCode, qaReport, chosenModel);
+            this.cb.onNote('agent_qa', '🎉', `Uyee menyetujui deliverable! Task selesai.`);
             this.cb.onEvent({ kind: 'tool_result', ts: Date.now(), sessionId: qa.sessionId, agentId: 'agent_qa', toolUseId: '0', isError: false });
             qa.busy = false;
 
@@ -225,7 +233,7 @@ class SessionManager {
         return;
       }
 
-      // 2. Direct Bulu (Developer)
+      // 2. Direct Tupon (Developer)
       if (agentId === 'agent_dev') {
         this.cb.onEvent({ kind: 'thinking', ts: Date.now(), sessionId, agentId });
         this.cb.onEvent({
@@ -240,16 +248,17 @@ class SessionManager {
         });
         const reply = await antigravity.generate(
           agentId,
-          `You are Bulu, Lead Developer. Respond directly to the user's coding request:\n"${text}".\nProvide clean, working code with concise explanation.`
+          `You are Tupon, Lead Developer. Respond directly to the user's coding request:\n"${text}".\nProvide clean, working code with concise explanation.`,
+          chosenModel
         );
         this.pushChat(agentId, 'agent', reply);
-        this.trackUsage(agentId, text, reply);
+        this.trackUsage(agentId, text, reply, chosenModel);
         this.cb.onEvent({ kind: 'tool_result', ts: Date.now(), sessionId, agentId, toolUseId: '0', isError: false });
         agent.busy = false;
         return;
       }
 
-      // 3. Direct Kecil (QA)
+      // 3. Direct Uyee (QA)
       if (agentId === 'agent_qa') {
         this.cb.onEvent({ kind: 'thinking', ts: Date.now(), sessionId, agentId });
         this.cb.onEvent({
@@ -264,10 +273,11 @@ class SessionManager {
         });
         const reply = await antigravity.generate(
           agentId,
-          `You are Kecil, Senior QA & Security Reviewer. Respond directly to the user's review/audit request:\n"${text}".\nHighlight security, edge-cases, and quality assurance recommendations.`
+          `You are Uyee, Senior QA & Security Reviewer. Respond directly to the user's review/audit request:\n"${text}".\nHighlight security, edge-cases, and quality assurance recommendations.`,
+          chosenModel
         );
         this.pushChat(agentId, 'agent', reply);
-        this.trackUsage(agentId, text, reply);
+        this.trackUsage(agentId, text, reply, chosenModel);
         this.cb.onEvent({ kind: 'tool_result', ts: Date.now(), sessionId, agentId, toolUseId: '0', isError: false });
         agent.busy = false;
         return;
@@ -288,10 +298,11 @@ class SessionManager {
       });
       const reply = await antigravity.generate(
         agentId,
-        `${role.systemPrompt}\n\nTask from user: "${text}".\nProvide thorough, expert work with clear output.`
+        `${role.systemPrompt}\n\nTask from user: "${text}".\nProvide thorough, expert work with clear output.`,
+        chosenModel
       );
       this.pushChat(agentId, 'agent', reply);
-      this.trackUsage(agentId, text, reply);
+      this.trackUsage(agentId, text, reply, chosenModel);
       this.cb.onEvent({ kind: 'tool_result', ts: Date.now(), sessionId, agentId, toolUseId: '0', isError: false });
       agent.busy = false;
     } catch (err) {

@@ -45,10 +45,13 @@
         <button type="button" class="mode" data-mode="auto">⚡ Auto<small>full send, no questions</small></button>
       </div>
       <label class="field-label">Model</label>
-      <div id="model-row">
-        <button type="button" class="mode selected" data-model="gemini-3.8-flash">⚡ Gemini 3.8 Flash<small>fast &amp; smart</small></button>
-        <button type="button" class="mode" data-model="gemini-3.8-flash-high">🧠 Flash High<small>deep reasoning</small></button>
-        <button type="button" class="mode" data-model="gemini-4-argon">🚀 Argon 4<small>preview</small></button>
+      <div id="model-row" style="flex-wrap:wrap">
+        <button type="button" class="mode selected" data-model="gemini-3.8-flash">⚡ Gemini 3.8 Flash<small>default cepat</small></button>
+        <button type="button" class="mode" data-model="gemini-3.8-flash-high">🧠 Flash High<small>penalaran tinggi</small></button>
+        <button type="button" class="mode" data-model="gemini-4-argon">🚀 Argon 4<small>next-gen preview</small></button>
+        <button type="button" class="mode" data-model="claude-sonnet-5">⚖️ Sonnet 5<small>koding &amp; logika</small></button>
+        <button type="button" class="mode" data-model="claude-opus-5">👑 Opus 5<small>terbesar &amp; terkuat</small></button>
+        <button type="button" class="mode" data-model="gemini-2.5-pro">🎯 2.5 Pro<small>akurasi tinggi</small></button>
       </div>
       <textarea id="hire-task" rows="3" placeholder="What should they do? e.g. Tulis fungsi validasi form di TypeScript" required></textarea>
       <label class="field-label">Working folder <span>— files are created here</span></label>
