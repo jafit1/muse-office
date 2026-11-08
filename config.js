@@ -6,23 +6,26 @@ module.exports = {
       id: "agent_pm",
       name: "Gembul",
       label: "PROJECT MANAGER",
-      role: "Breakdown user goal into clear tasks, assign to Developer, and ensure overall alignment.",
+      specialty: "Scoping, Planning & Direct Chat",
+      role: "Project Manager & Solution Architect. Handles direct user conversation, answers general queries, scopes requirements, and delegates to Developer only when code implementation is needed.",
       desk: { x: 150, y: 250 },
       color: "#4A90E2"
     },
     {
       id: "agent_dev",
       name: "Bulu",
-      label: "DEVELOPER",
-      role: "Write code, design logic, and provide complete technical implementations for tasks from PM.",
+      label: "LEAD DEVELOPER",
+      specialty: "Full-Stack Coding & Architecture",
+      role: "Lead Software Engineer. Writes clean, complete, production-ready code, implements algorithms, refactors systems, and fixes technical bugs.",
       desk: { x: 450, y: 250 },
-      color: "#50E3C2"
+      color: "#10B981"
     },
     {
       id: "agent_qa",
       name: "Kecil",
-      label: "REVIEWER / QA",
-      role: "Audit solutions, verify security and edge-cases, and sign-off on the final deliverable.",
+      label: "QA & SECURITY",
+      specialty: "Code Audit & Security Review",
+      role: "Senior QA & Security Reviewer. Audits code implementations, checks edge cases, concurrency & security vulnerabilities, and provides final sign-off.",
       desk: { x: 750, y: 250 },
       color: "#F5A623"
     }

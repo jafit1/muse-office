@@ -56,56 +56,151 @@ function updateAgentStatus(agentId, status, bubble = '') {
   }
 }
 
-function logOffice(from, to, text) {
-  const logItem = { timestamp: new Date().toLocaleTimeString(), from, to, text };
+function logOffice(from, to, text, kind = '') {
+  const timestamp = new Date().toLocaleTimeString('id-ID', { hour12: false });
+  const messageKind = kind || (to === 'OPERATOR' || from === 'OPERATOR' ? 'chat' : 'handoff');
+  const logItem = { timestamp, from, to, text, kind: messageKind };
   officeState.logs.push(logItem);
-  if (officeState.logs.length > 50) officeState.logs.shift();
+  if (officeState.logs.length > 80) officeState.logs.shift();
   broadcast('NEW_LOG', logItem);
 }
 
 async function callAntigravity(agentConfig, systemPrompt, userMessage) {
-  return antigravity.generate(agentConfig.id, `${systemPrompt}\n\n${userMessage}`);
+  const agentId = typeof agentConfig === 'object' ? agentConfig.id : agentConfig;
+  return antigravity.generate(agentId, `${systemPrompt}\n\n${userMessage}`);
 }
 
-async function runOfficeTask(taskPrompt) {
+function isGreeting(text) {
+  const t = (text || '').toLowerCase().trim();
+  return /^(hi|halo|hello|hai|hey|p|tes|test|pagi|siang|sore|malam|selamat\s+(pagi|siang|sore|malam)|apa kabar|kamu siapa|siapa kamu)[\s!?.]*$/i.test(t);
+}
+
+function isCodingTask(text) {
+  const t = (text || '').toLowerCase();
+  return /code|coding|fungsi|function|buat|bikin|tulis|implement|build|fix|debug|refactor|script|program|app|api|service|database|query|html|css|js|ts|python|rust|golang|endpoint|class/i.test(t);
+}
+
+async function runOfficeTask(taskPrompt, targetAgent = 'auto') {
   const pm = config.agents.find(a => a.id === 'agent_pm');
   const dev = config.agents.find(a => a.id === 'agent_dev');
   const qa = config.agents.find(a => a.id === 'agent_qa');
 
   try {
-    // Step 1: PM analyzes and assigns
-    updateAgentStatus(pm.id, 'thinking', 'Analyzing task...');
-    logOffice('OPERATOR', pm.name, taskPrompt);
+    // ------------------------------------------------------------------------
+    // Direct Agent Execution (1-on-1 with selected agent)
+    // ------------------------------------------------------------------------
+    if (targetAgent === 'agent_pm') {
+      updateAgentStatus(pm.id, 'thinking', 'Memproses langsung...');
+      logOffice('OPERATOR', pm.name, taskPrompt, 'chat');
+      const pmDirect = await callAntigravity(
+        pm,
+        `You are ${pm.name}, ${pm.label}. Specialty: ${pm.specialty || pm.role}.\nAnswer OPERATOR directly. Respond helpfully, clearly, and concisely in the user's language (Indonesian or English).`,
+        taskPrompt
+      );
+      updateAgentStatus(pm.id, 'talking', 'Menjawab langsung...');
+      logOffice(pm.name, 'OPERATOR', pmDirect, 'chat');
+      return;
+    }
 
-    const pmInstructions = await callAntigravity(
-      pm,
-      `You are ${pm.name}. Role: ${pm.role}. Convert the user objective into concrete specifications and delegate to Developer (${dev.name}). Concise, actionable, zero filler.`,
-      taskPrompt
-    );
-    updateAgentStatus(pm.id, 'talking', 'Delegating to Dev...');
-    logOffice(pm.name, dev.name, pmInstructions);
+    if (targetAgent === 'agent_dev') {
+      updateAgentStatus(dev.id, 'thinking', 'Menulis solusi kode...');
+      logOffice('OPERATOR', dev.name, taskPrompt, 'chat');
+      const devDirect = await callAntigravity(
+        dev,
+        `You are ${dev.name}, ${dev.label}. Specialty: ${dev.specialty || dev.role}.\nImplement or answer directly for OPERATOR. Provide clean, working code with concise explanation in the user's language. No unnecessary fluff.`,
+        taskPrompt
+      );
+      updateAgentStatus(dev.id, 'talking', 'Menyerahkan solusi...');
+      logOffice(dev.name, 'OPERATOR', devDirect, 'chat');
+      return;
+    }
+
+    if (targetAgent === 'agent_qa') {
+      updateAgentStatus(qa.id, 'thinking', 'Mengaudit & menganalisis...');
+      logOffice('OPERATOR', qa.name, taskPrompt, 'chat');
+      const qaDirect = await callAntigravity(
+        qa,
+        `You are ${qa.name}, ${qa.label}. Specialty: ${qa.specialty || qa.role}.\nReview, audit, or answer directly for OPERATOR. Highlight verification points, security/edge-case checks, and your verdict clearly and concisely in the user's language.`,
+        taskPrompt
+      );
+      updateAgentStatus(qa.id, 'talking', 'Menyerahkan hasil audit...');
+      logOffice(qa.name, 'OPERATOR', qaDirect, 'chat');
+      return;
+    }
+
+    // ------------------------------------------------------------------------
+    // Auto Workflow (Smart Relay)
+    // ------------------------------------------------------------------------
+    updateAgentStatus(pm.id, 'thinking', 'Menganalisis kebutuhan...');
+    logOffice('OPERATOR', pm.name, taskPrompt, 'chat');
+
+    // Case A: Casual greeting or quick ping -> Gembul answers directly, Bulu & Kecil stay seated
+    if (isGreeting(taskPrompt)) {
+      const pmGreeting = await callAntigravity(
+        pm,
+        `You are ${pm.name}, ${pm.label} of Gembul Agent cluster. Role: ${pm.role}.\nGreet OPERATOR warmly and concisely in Indonesian/English. Introduce yourself and your team (Bulu the Developer, Kecil the QA). Ask how you can assist with their project today. Keep it short (2-3 sentences max).`,
+        taskPrompt
+      );
+      updateAgentStatus(pm.id, 'talking', 'Halo OPERATOR!');
+      logOffice(pm.name, 'OPERATOR', pmGreeting, 'chat');
+      return;
+    }
+
+    // Case B: General query or task decomposition
+    const pmDecisionPrompt = `You are ${pm.name}, ${pm.label}. Role: ${pm.role}.
+User objective from OPERATOR: "${taskPrompt}"
+
+DECISION PROTOCOL:
+- If this objective is a question, planning task, advice, explanation, or conversational request that DOES NOT require writing code:
+  Answer OPERATOR directly and helpfully in the user's language.
+  Prefix your response with "[DIRECT]".
+- If this objective requires writing code, implementing an algorithm, building an API/component, or fixing a software bug:
+  Provide clear, actionable technical specifications for Developer (${dev.name}).
+  Prefix your response with "[DELEGATE]".`;
+
+    const pmResponse = await callAntigravity(pm, pmDecisionPrompt, taskPrompt);
+    const isDirect = pmResponse.includes('[DIRECT]') || (!pmResponse.includes('[DELEGATE]') && !isCodingTask(taskPrompt));
+
+    if (isDirect) {
+      const cleanDirect = pmResponse.replace(/\[DIRECT\]\s*/i, '').trim();
+      updateAgentStatus(pm.id, 'talking', 'Menjawab langsung...');
+      logOffice(pm.name, 'OPERATOR', cleanDirect, 'chat');
+      return;
+    }
+
+    // Case C: Delegation to Developer -> QA
+    const cleanSpecs = pmResponse.replace(/\[DELEGATE\]\s*/i, '').trim();
+    updateAgentStatus(pm.id, 'talking', 'Mendelegasikan ke Bulu...');
+    logOffice(pm.name, dev.name, cleanSpecs, 'handoff');
     updateAgentStatus(pm.id, 'idle', '');
 
-    // Step 2: Dev executes
-    updateAgentStatus(dev.id, 'thinking', 'Implementing solution...');
+    // Step 2: Bulu (Developer) implements
+    updateAgentStatus(dev.id, 'thinking', 'Mengimplementasikan kode...');
     const devResult = await callAntigravity(
       dev,
-      `You are ${dev.name}. Role: ${dev.role}. Implement technical solution for: "${pmInstructions}". Provide complete solution, no placeholders.`,
-      pmInstructions
+      `You are ${dev.name}, ${dev.label}. Role: ${dev.role}.
+Technical specification from PM (${pm.name}):
+${cleanSpecs}
+Original goal: "${taskPrompt}"
+
+Provide a clean, complete, working technical implementation with concise explanation. No placeholders.`,
+      cleanSpecs
     );
-    updateAgentStatus(dev.id, 'talking', 'Handing off to QA...');
-    logOffice(dev.name, qa.name, devResult);
+    updateAgentStatus(dev.id, 'talking', 'Menyerahkan ke Kecil...');
+    logOffice(dev.name, qa.name, devResult, 'handoff');
     updateAgentStatus(dev.id, 'idle', '');
 
-    // Step 3: QA audits
-    updateAgentStatus(qa.id, 'thinking', 'Auditing deliverable...');
+    // Step 3: Kecil (QA) audits
+    updateAgentStatus(qa.id, 'thinking', 'Mengaudit kualitas & keamanan...');
     const qaAudit = await callAntigravity(
       qa,
-      `You are ${qa.name}. Role: ${qa.role}. Review work from ${dev.name} against goal: "${taskPrompt}". Output final verdict, verification points, and approval.`,
+      `You are ${qa.name}, ${qa.label}. Role: ${qa.role}.
+Review the technical implementation from ${dev.name} against the original goal: "${taskPrompt}".
+Provide a concise quality, security, and edge-case review followed by your final verdict and approval for OPERATOR.`,
       devResult
     );
-    updateAgentStatus(qa.id, 'talking', 'Deliverable verified!');
-    logOffice(qa.name, 'OPERATOR', qaAudit);
+    updateAgentStatus(qa.id, 'talking', 'Deliverable diverifikasi!');
+    logOffice(qa.name, 'OPERATOR', qaAudit, 'chat');
   } finally {
     updateAgentStatus(pm.id, 'idle', '');
     updateAgentStatus(dev.id, 'idle', '');
@@ -139,14 +234,15 @@ app.get('/health', (req, res) => res.json({ status: 'ok', uptime: Math.round(pro
 let activeTask = false;
 app.post('/api/task', async (req, res) => {
   const task = typeof req.body?.task === 'string' ? req.body.task.trim() : '';
+  const targetAgent = typeof req.body?.targetAgent === 'string' ? req.body.targetAgent.trim() : 'auto';
   if (!task) return res.status(400).json({ error: 'Task required' });
   if (task.length > 8000) return res.status(413).json({ error: 'Task limit is 8000 characters.' });
   if (!antigravity.status().connected) return res.status(401).json({ error: 'Login ke Antigravity dulu.' });
   if (activeTask) return res.status(409).json({ error: 'Satu tugas sedang dikerjakan; tunggu sampai selesai.' });
   activeTask = true;
-  res.status(202).json({ status: 'running', task });
-  runOfficeTask(task).catch(error => {
-    logOffice('SYSTEM', 'OPERATOR', `Tugas gagal: ${error.message}`);
+  res.status(202).json({ status: 'running', task, targetAgent });
+  runOfficeTask(task, targetAgent).catch(error => {
+    logOffice('SYSTEM', 'OPERATOR', `Tugas gagal: ${error.message}`, 'system');
     console.error('[Task failure]', error);
   }).finally(() => { activeTask = false; });
 });

@@ -95,8 +95,13 @@ const server = http.createServer(async (req, res) => {
       email = info.email || '';
     } catch {}
 
-    reply(res, 200, `Done. Account: ${email || '(unknown)'}<br>Return to the terminal.`);
-    console.log('\n--- paste this into the host as ANTIGRAVITY_REFRESH_TOKEN ---\n');
+    const targetAgent = (process.argv[2] || process.env.LOGIN_AGENT || '').trim().toLowerCase();
+    const envVarName = targetAgent
+      ? `ANTIGRAVITY_REFRESH_TOKEN_${targetAgent.replace(/^agent_/, '').toUpperCase()}`
+      : 'ANTIGRAVITY_REFRESH_TOKEN';
+
+    reply(res, 200, `Done. Account: ${email || '(unknown)'}<br>Target: ${envVarName}<br>Return to the terminal.`);
+    console.log(`\n--- paste this into the host as ${envVarName} ---\n`);
     console.log(tokens.refresh_token);
     console.log(`\naccount: ${email || '(unknown)'}\n`);
   } catch (e) {

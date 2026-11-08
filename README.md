@@ -61,19 +61,26 @@ Status `GET /health` menampilkan `email`, `emailAllowed`, dan `allowlistSize` un
 Kalau OAuth client-nya tidak bisa didaftarkan untuk domain ini, mint token di komputer sendiri:
 
 ```
-node login-local.js
+node login-local.js        # untuk akun default (shared)
+node login-local.js pm     # khusus akun Gembul (PM)
+node login-local.js dev    # khusus akun Bulu (Developer)
+node login-local.js qa     # khusus akun Kecil (QA & Reviewer)
 ```
 
-Skrip membuka consent screen di browser, menangkap callback di `http://localhost:53682`, lalu mencetak refresh token. Tempel hasilnya ke env `ANTIGRAVITY_REFRESH_TOKEN`; service memakainya untuk menukar access token seperti biasa. Tombol LOGIN GOOGLE tidak dipakai lagi dalam mode ini.
+Skrip membuka consent screen di browser, menangkap callback di `http://localhost:53682`, lalu mencetak refresh token. Tempel hasilnya ke env `ANTIGRAVITY_REFRESH_TOKEN` (atau `_PM`, `_DEV`, `_QA`); service memakainya untuk menukar access token seperti biasa. Tiap agen bisa memakai akun Google berbeda atau berbagi akun default yang sama.
 
 Model: id ramah diperluas ke kunci model yang diterima API (`gemini-3.8-flash` → `gemini-3.8-flash-medium`), dan id lain dikirim apa adanya. Akhiran gaya IDE seperti `(medium)` dibuang, karena bentuk itu dijawab `404 Requested entity was not found`.
 
-## Pemakaian
+## Pemakaian & Mode Agen
 
-1. Buka service, tekan **LOGIN GOOGLE**, setujui consent.
-2. Status berubah jadi `CONNECTED` dan email akun muncul di kanan atas.
-3. Tulis tujuan di **Mission Dispatch**, tekan **DISPATCH**. Satu tugas diproses pada satu waktu (`409` kalau masih berjalan), dan ditolak dengan `401` kalau belum login.
-4. Feed **Inter-Agent Protocol Bus** menampilkan serah-terima Gembul → Bulu → Kecil.
+1. Buka service, pastikan status `CLUSTER ACTIVE` dan `Antigravity` terhubung (lewat token env atau login Google).
+2. Pilih mode di atas kotak chat:
+   - **✨ Auto Relay (Workflow Pintar):** Jika pesan hanya sapaan ("hi", "halo"), obrolan santai, atau konsultasi, Gembul langsung menjawab tanpa melempar ke agen lain. Jika butuh koding/implementasi, Gembul membuat spesifikasi teknis ➔ didelegasikan ke Bulu (Developer) ➔ diaudit & disetujui Kecil (QA) ➔ hasil diserahkan ke OPERATOR.
+   - **👔 Gembul (PM):** Diskusi langsung 1-on-1 mengenai perencanaan, arsitektur, atau scoping proyek.
+   - **💻 Bulu (Developer):** Instruksi coding langsung, penulisan script, algoritma, atau perbaikan bug.
+   - **🔍 Kecil (QA):** Review kode langsung, audit keamanan, analisis race condition, dan validasi edge-case.
+3. Feed chat berjalan dari atas ke bawah (full viewport 100vh) lengkap dengan formatting Markdown, pemformatan blok kode, dan tombol salin instan.
+4. Canvas 2D di sebelah kiri menampilkan pergerakan fisik agen secara realtime saat serah terima tugas berlangsung.
 
 Mau lihat animasinya tanpa login? Tambahkan `?demo=1` di URL. Satu siklus kerja diputar ulang di browser saja (badge **DEMO** menyala, server tidak dipanggil, tidak ada task yang benar-benar jalan).
 

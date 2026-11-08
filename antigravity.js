@@ -53,29 +53,96 @@ const ALLOWED_EMAILS = (process.env.ANTIGRAVITY_ALLOWED_EMAILS || '').split(',')
 // the only way to use a client whose redirect URI we are not allowed to add.
 const IMPORTED_REFRESH_TOKEN = (process.env.ANTIGRAVITY_REFRESH_TOKEN || '').trim();
 
+function getAgentEnvToken(agentId) {
+  if (!agentId || agentId === 'default') return IMPORTED_REFRESH_TOKEN;
+  const suffix = agentId.replace(/^agent_/, '').toUpperCase();
+  return (process.env[`ANTIGRAVITY_REFRESH_TOKEN_${suffix}`] || '').trim() ||
+         (process.env[`ANTIGRAVITY_REFRESH_TOKEN_${agentId.toUpperCase()}`] || '').trim() ||
+         IMPORTED_REFRESH_TOKEN;
+}
+
+function safeAgentId(agent) {
+  if (!agent) return 'default';
+  let raw = '';
+  if (typeof agent === 'object') {
+    raw = agent.id || (agent.name ? `agent_${String(agent.name).toLowerCase()}` : 'default');
+  } else {
+    raw = String(agent);
+  }
+  return String(raw || 'default').replace(/[^a-zA-Z0-9_-]/g, '') || 'default';
+}
+
+function agentTokenFile(agentId) {
+  const id = safeAgentId(agentId);
+  if (id === 'default') return tokenFile();
+  return path.join(dataDir(), `antigravity_${id}.json`);
+}
+
 function emailAllowed(email) {
   return ALLOWED_EMAILS.length === 0 || ALLOWED_EMAILS.includes((email || '').trim().toLowerCase());
 }
 
 let state = null;
+const agentStates = new Map();
 let pending = new Map();
 let refreshPromise = null;
-function readState() {
-  if (state) return state;
-  try { state = JSON.parse(fs.readFileSync(tokenFile(), 'utf8')); } catch { state = null; }
-  // No stored session yet: adopt the hand-delivered refresh token, if any.
-  if (!state && IMPORTED_REFRESH_TOKEN) {
-    state = { accessToken: '', refreshToken: IMPORTED_REFRESH_TOKEN, expiresAt: 0, projectId: '', projectSynthetic: false, email: '', imported: true };
+
+function readState(agent = 'default') {
+  const id = safeAgentId(agent);
+  if (id === 'default') {
+    if (state) return state;
+    try { state = JSON.parse(fs.readFileSync(tokenFile(), 'utf8')); } catch { state = null; }
+    if (!state && IMPORTED_REFRESH_TOKEN) {
+      state = { accessToken: '', refreshToken: IMPORTED_REFRESH_TOKEN, expiresAt: 0, projectId: '', projectSynthetic: false, email: '', imported: true };
+      return state;
+    }
+    if (state && !emailAllowed(state.email)) {
+      state = null;
+      try { fs.unlinkSync(tokenFile()); } catch {}
+    }
     return state;
   }
-  // A stored session from an account that is no longer allowed is not a session.
-  if (state && !emailAllowed(state.email)) {
-    state = null;
-    try { fs.unlinkSync(tokenFile()); } catch {}
+
+  // Per-agent state lookup: dedicated file -> dedicated env token -> fallback to default
+  if (agentStates.has(id)) return agentStates.get(id);
+
+  const file = agentTokenFile(id);
+  let agState = null;
+  if (fs.existsSync(file)) {
+    try { agState = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { agState = null; }
   }
-  return state;
+
+  const envToken = getAgentEnvToken(id);
+  if (!agState && envToken && envToken !== IMPORTED_REFRESH_TOKEN) {
+    agState = { accessToken: '', refreshToken: envToken, expiresAt: 0, projectId: '', projectSynthetic: false, email: '', dedicated: true };
+  }
+
+  if (!agState) {
+    return readState('default');
+  }
+
+  if (agState && !emailAllowed(agState.email)) {
+    agState = null;
+    try { fs.unlinkSync(file); } catch {}
+    return readState('default');
+  }
+
+  agentStates.set(id, agState);
+  return agState;
 }
-function saveState(next) { const dir = dataDir(); fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, 'antigravity.json'), JSON.stringify(next, null, 2), { mode: 0o600 }); state = next; }
+
+function saveState(next, agent = 'default') {
+  const id = safeAgentId(agent);
+  const dir = dataDir();
+  fs.mkdirSync(dir, { recursive: true });
+  if (id === 'default' || !next.dedicated) {
+    fs.writeFileSync(tokenFile(), JSON.stringify(next, null, 2), { mode: 0o600 });
+    state = next;
+  } else {
+    fs.writeFileSync(agentTokenFile(id), JSON.stringify(next, null, 2), { mode: 0o600 });
+    agentStates.set(id, next);
+  }
+}
 function redirectUri(req) {
   if (PUBLIC_CALLBACK_URL) return PUBLIC_CALLBACK_URL;
   const proto = req.get('x-forwarded-proto')?.split(',')[0]?.trim() || req.protocol;
@@ -88,8 +155,9 @@ function authUrl(req, nonce) {
 }
 async function jsonFetch(url, options) { const res = await fetch(url, options); const body = await res.json().catch(() => ({})); if (!res.ok) throw new Error(body.error_description || body.error?.message || `Antigravity HTTP ${res.status}`); return body; }
 async function exchange(code, req) { return jsonFetch(TOKEN_URL, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', client_id: CLIENT_ID, client_secret: CLIENT_SECRET, code, redirect_uri: redirectUri(req) }) }); }
-async function refresh(current) {
+async function refresh(current, agent = 'default') {
   if (!current?.refreshToken) return null;
+  const id = safeAgentId(agent);
   try {
     const tokens = await jsonFetch(TOKEN_URL, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: current.refreshToken, client_id: CLIENT_ID, client_secret: CLIENT_SECRET }) });
     // An imported token arrives without an email, so the account behind it is
@@ -105,32 +173,37 @@ async function refresh(current) {
       }
     }
     const next = { ...current, email, accessToken: tokens.access_token, refreshToken: tokens.refresh_token || current.refreshToken, expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000 };
-    saveState(next);
+    saveState(next, id);
     return next;
   } catch (error) {
-    if (error.message?.includes('invalid_grant')) { state = null; try { fs.unlinkSync(tokenFile()); } catch {} }
+    if (error.message?.includes('invalid_grant')) {
+      if (id === 'default') {
+        state = null;
+        try { fs.unlinkSync(tokenFile()); } catch {}
+      } else {
+        agentStates.delete(id);
+        try { fs.unlinkSync(agentTokenFile(id)); } catch {}
+      }
+    }
     throw error;
   }
 }
-async function ensureToken() {
-  const current = readState();
+async function ensureToken(agent = 'default') {
+  const id = safeAgentId(agent);
+  const current = readState(id);
   if (!current) throw Object.assign(new Error('Antigravity belum terhubung.'), { status: 401 });
   if (current.expiresAt && current.expiresAt > Date.now() + 300000) return current;
   if (!current.refreshToken) throw Object.assign(new Error('Sesi Antigravity kedaluwarsa; login ulang diperlukan.'), { status: 401 });
-  if (!refreshPromise) refreshPromise = refresh(current).finally(() => { refreshPromise = null; });
-  const next = await refreshPromise;
-  if (!next?.accessToken) throw Object.assign(new Error('Refresh sesi Antigravity gagal; login ulang diperlukan.'), { status: 401 });
-  return next;
+  return refresh(current, id);
 }
 
 // A token can be revoked before it expires, so a 401 has to force the refresh
 // instead of re-reading the same fresh-looking cache.
-async function forceRefresh() {
-  const current = readState();
+async function forceRefresh(agent = 'default') {
+  const id = safeAgentId(agent);
+  const current = readState(id);
   if (!current?.refreshToken) throw Object.assign(new Error('Sesi Antigravity tidak bisa diperbarui; login ulang.'), { status: 401 });
-  const next = await refresh(current);
-  if (!next?.accessToken) throw Object.assign(new Error('Refresh sesi Antigravity gagal; login ulang.'), { status: 401 });
-  return next;
+  return refresh(current, id);
 }
 
 function projectOf(assist) {
@@ -173,8 +246,9 @@ async function loadProject(headers, tier, firstAssist) {
 
 // Re-check on demand: a generated id is replaced the moment the real project
 // shows up, so nobody stays stuck on the fallback forever.
-async function ensureProject(creds) {
+async function ensureProject(creds, agent = 'default') {
   if (creds.projectId && !creds.projectSynthetic) return creds;
+  const id = safeAgentId(agent);
   const headers = { Authorization: `Bearer ${creds.accessToken}`, 'Content-Type': 'application/json', 'User-Agent': USER_AGENT, 'x-request-source': 'local' };
   const assist = await jsonFetch(CODE_ASSIST_URL, { method: 'POST', headers, body: JSON.stringify({ metadata: METADATA }) }).catch(() => null);
   if (!assist) return creds;
@@ -183,7 +257,7 @@ async function ensureProject(creds) {
   const next = found
     ? { ...creds, projectId: found, projectSynthetic: false, tier, tiers: tierIds(assist) }
     : (creds.projectId ? creds : { ...creds, projectId: synthesizeProjectId(), projectSynthetic: true, tier, tiers: tierIds(assist) });
-  if (next !== creds) saveState(next);
+  if (next !== creds) saveState(next, id);
   return next;
 }
 
@@ -209,7 +283,7 @@ async function connectCode(code, req) {
     tiers: tierIds(assist),
     email: info.email || ''
   };
-  saveState(saved);
+  saveState(saved, 'default');
   return saved;
 }
 
@@ -229,8 +303,9 @@ function numericSessionId() {
 }
 
 async function generate(agent, prompt) {
-  let creds = await ensureToken();
-  creds = await ensureProject(creds);
+  const id = safeAgentId(agent);
+  let creds = await ensureToken(id);
+  creds = await ensureProject(creds, id);
   const model = resolveModel();
   const callBody = creds => JSON.stringify({
     project: creds.projectId,
@@ -259,7 +334,7 @@ async function generate(agent, prompt) {
 
   let { res, body } = await attempt();
   if (res.status === 401) {
-    creds = await forceRefresh();
+    creds = await forceRefresh(id);
     ({ res, body } = await attempt());
   }
   if (res.status === 429 || res.status === 503) {
@@ -275,7 +350,27 @@ async function generate(agent, prompt) {
 }
 
 function status() {
-  const s = readState();
+  const s = readState('default');
+  const agentRoster = [
+    { id: 'agent_pm', name: 'Gembul', label: 'PROJECT MANAGER' },
+    { id: 'agent_dev', name: 'Bulu', label: 'LEAD DEVELOPER' },
+    { id: 'agent_qa', name: 'Kecil', label: 'QA & SECURITY' }
+  ];
+  const agents = {};
+  for (const ag of agentRoster) {
+    const st = readState(ag.id);
+    const envToken = getAgentEnvToken(ag.id);
+    const dedicated = fs.existsSync(agentTokenFile(ag.id)) || (!!envToken && envToken !== IMPORTED_REFRESH_TOKEN);
+    agents[ag.id] = {
+      id: ag.id,
+      name: ag.name,
+      label: ag.label,
+      connected: !!(st?.accessToken || st?.refreshToken),
+      email: st?.email || s?.email || '',
+      dedicated,
+      tier: st?.tier || s?.tier || 'free-tier'
+    };
+  }
   return {
     connected: !!(s?.accessToken || s?.refreshToken),
     needsRefresh: !!s && s.expiresAt <= Date.now() + 300000,
@@ -291,7 +386,8 @@ function status() {
     model: resolveModel(),
     callbackConfigured: !!PUBLIC_CALLBACK_URL,
     clientIdValid: /\.apps\.googleusercontent\.com$/.test(CLIENT_ID),
-    oauthConfigured: !!(CLIENT_ID && CLIENT_SECRET)
+    oauthConfigured: !!(CLIENT_ID && CLIENT_SECRET),
+    agents
   };
 }
 
